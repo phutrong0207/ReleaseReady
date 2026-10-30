@@ -153,6 +153,7 @@ async function openCycle(id) {
 const stripCycle = n => { const { cycle, ...r } = n; void cycle; return r; };
 // Open a notification from the first screen: mark it read, open its test cycle, go to the comment or chat it is about.
 async function openHomeNote(cy, id) {
+  if (S.boot === 'ready' && cy === CY.cur) { S.updOpen = false; A.openNote({ dataset: { v: id } }); render(); return; }
   const n = CY.notes.find(x => x.cycle === cy && x.id === id); if (!n) return;
   if (!n.is_read) { n.is_read = true; try { await api('/api/notes/read', { items: [{ cycle: cy, id, row: stripCycle(n) }] }); } catch (e) { /* still open it */ } }
   await openCycle(cy); if (S.boot !== 'ready') return;
@@ -692,8 +693,18 @@ function cycleCard(c, done) {
 }
 // The first screen: every test cycle, and a way to add one.
 // Notifications from every test cycle, grouped by test cycle. Clicking one opens that test cycle at the right place.
+// Inside a test cycle its own notifications come from the open cycle (they may not be saved yet); the others from the server.
+function updatesList() {
+  if (S.boot !== 'ready' || !CY.cur) return CY.notes;
+  const who = homeWho(), here = S.notes.filter(n => n.to === who).map(n => ({ cycle: CY.cur, id: n.id, kind: n.kind, body: n.text, sent_at: n.at, is_read: !!n.read, position: n.pos || 0, recipient: n.to }));
+  return [...here, ...CY.notes.filter(n => n.cycle !== CY.cur)];
+}
+const updUnread = () => updatesList().filter(n => !n.is_read).length;
+// The My updates button on the "Logged in as" line, and its drop-down, so updates can be read from anywhere.
+const updBtn = () => { const u = updUnread(); return `<button class="btn sm updbtn" data-a="togUpd" aria-expanded="${!!S.updOpen}">${I.inbox}My updates${u ? `<span class="badge inline">${u}</span>` : ''}</button>`; };
+const updPanel = () => S.updOpen ? `<section class="panel updpanel" aria-label="My updates"><div class="row between"><h2 style="font-size:18px">My updates</h2><button class="iconbtn" data-a="togUpd" aria-label="Close My updates">${I.x}</button></div>${homeUpdates()}</section>` : '';
 function homeUpdates() {
-  const ns = CY.notes, un = ns.filter(n => !n.is_read).length;
+  const ns = updatesList(), un = ns.filter(n => !n.is_read).length;
   if (!ns.length) return '<div class="empty"><b>No messages yet</b><span>Messages from every test cycle appear here.</span></div>';
   const groups = CY.list.map(c => [c, ns.filter(n => n.cycle === c.id)]).filter(([, l]) => l.length);
   return `<div class="row between"><span class="small muted">${un ? `${un} unread` : 'All read'} · from ${groups.length} test cycle${groups.length !== 1 ? 's' : ''}</span>${un ? '<button class="btn sm" data-a="homeReadAll">Mark all as read</button>' : ''}</div>
@@ -801,7 +812,7 @@ function tUpdates() {
 function testerUI() {
   if (!S.me) S.me = CY.me;
   if (!S.me || !testers().includes(S.me)) return `<section class="panel"><div class="empty"><b>${S.me ? esc(S.me) + ' is not a tester in this test cycle' : 'Who are you?'}</b><span>Go back to your test cycles and pick one you are part of.</span><button class="btn primary" data-a="goHome">← My test cycles</button></div></section>`;
-  return `<div class="banner tst"><span class="row">${av(S.me, 'av')}<span>Logged in as <b>${esc(S.me)}</b> · tester</span></span><span class="row"><span class="small muted">Your messages are in My updates on the first screen.</span><button class="btn sm" data-a="logout">Switch person</button></span></div>
+  return `<div class="banner tst"><span class="row">${av(S.me, 'av')}<span>Logged in as <b>${esc(S.me)}</b> · tester</span></span><span class="row">${updBtn()}<button class="btn sm" data-a="logout">Switch person</button></span></div>${updPanel()}
   ${tScript()}${myFeedback()}`;
 }
 // Inbox: only the comments the UAT manager has written about, each with its chat. It opens and closes like a drop-down.
@@ -1020,7 +1031,7 @@ function managerUI() {
   const badge = { 2: S.script.reduce((a, s) => a + s.who.filter(t => !isDone(t, s.step)).length, 0), 3: pendingTriage(), 4: [...P.bugs, ...P.ideas].filter(p => !S.ptk[p.pid]).length };
   const secBtn = s => `<button class="sec" aria-current="${S.sec === s[0]}" data-a="sec" data-v="${s[0]}"><span class="n">${s[3]}</span><b>${s[1]}</b>${badge[s[0]] ? `<span class="badge">${badge[s[0]]}</span>` : '<span></span>'}<span class="s">${s[2]}</span></button>`;
   const view = [vInbox, v1, v2, v3, v4, v5][S.sec]();
-  return `<div class="banner mgr"><span class="row">${av('M', 'av')}<span>Logged in as <b>UAT manager</b></span></span><span class="small muted">The AI suggests. You decide every step.</span></div>
+  return `<div class="banner mgr"><span class="row">${av('M', 'av')}<span>Logged in as <b>UAT manager</b></span></span><span class="row"><span class="small muted">The AI suggests. You decide every step.</span>${updBtn()}</span></div>${updPanel()}
   <div class="shell"><nav class="rail" aria-label="Sections">
   ${GROUPS.map(g => `<span class="railgroup">${g[0]}</span>${g[1].map(n => secBtn(SECS[n - 1])).join('')}`).join('')}
   </nav>
@@ -1073,10 +1084,12 @@ const A = {
   showGuide: e => { delete S.hideGuide[e.dataset.v]; },
   logout: () => { CY.me = null; CY.notes = []; goHome(); return 'keep'; },
   homeNote: e => { openHomeNote(e.dataset.c, e.dataset.v); return 'keep'; },
+  togUpd: () => { S.updOpen = !S.updOpen; if (S.updOpen) { if (CY.cur) CY.openG[CY.cur] = true; loadNotes().then(render).catch(() => {}); } },
   togG: e => { const v = e.dataset.v; if (CY.openG[v]) delete CY.openG[v]; else CY.openG[v] = true; },
   togInbox: () => { S.inboxOpen = !S.inboxOpen; },
   togMChats: () => { S.mchatsOpen = !S.mchatsOpen; },
-  homeReadAll: () => { const items = CY.notes.filter(n => !n.is_read).map(n => ({ cycle: n.cycle, id: n.id, row: stripCycle(n) })); CY.notes.forEach(n => { n.is_read = true; }); api('/api/notes/read', { items }).catch(() => {}); },
+  homeReadAll: () => { if (S.boot === 'ready' && CY.cur) S.notes.filter(n => n.to === homeWho()).forEach(n => { n.read = true; });
+    const items = CY.notes.filter(n => !n.is_read && !(S.boot === 'ready' && n.cycle === CY.cur)).map(n => ({ cycle: n.cycle, id: n.id, row: stripCycle(n) })); CY.notes.forEach(n => { n.is_read = true; }); api('/api/notes/read', { items }).catch(() => {}); },
   ttab: e => { S.ttab = e.dataset.v; },
   sec: e => { S.sec = +e.dataset.v; window.scrollTo({ top: 0 }); },
   askReset: () => { S.confirmReset = true; },
@@ -1220,7 +1233,7 @@ function chatPost(pid, from, text, img) {
   toast(from === 'manager' ? 'Sent to ' + people.join(', ') : 'Sent to the chat');
 }
 // What can still be clicked in a completed test cycle: looking around, not changing anything.
-const VIEW_OK = new Set(['role', 'login', 'logout', 'homeNote', 'homeReadAll', 'togG', 'togInbox', 'togMChats', 'ttab', 'sec', 'mtester', 'openStep', 'openPanel', 'closePanel', 'zoom', 'unzoom', 'tOpen', 'seeTicket', 'openNote', 'readAll', 'reopenCycle', 'goHome', 'openCycle', 'hideGuide', 'showGuide', 'f3', 'tog3', 'togAll', 'askReset', 'cancelReset', 'doReset', 'htab', 'cancelEnd', 'closeForm', 'retryBoot']);
+const VIEW_OK = new Set(['role', 'login', 'logout', 'homeNote', 'homeReadAll', 'togG', 'togUpd', 'togInbox', 'togMChats', 'ttab', 'sec', 'mtester', 'openStep', 'openPanel', 'closePanel', 'zoom', 'unzoom', 'tOpen', 'seeTicket', 'openNote', 'readAll', 'reopenCycle', 'goHome', 'openCycle', 'hideGuide', 'showGuide', 'f3', 'tog3', 'togAll', 'askReset', 'cancelReset', 'doReset', 'htab', 'cancelEnd', 'closeForm', 'retryBoot']);
 const readOnlyNote = () => toast('This test cycle is completed. Click "Reopen test cycle" to change it.');
 document.addEventListener('click', async ev => {
   const el = ev.target.closest('[data-a]'); if (!el || ['SELECT', 'TEXTAREA', 'INPUT'].includes(el.tagName)) return;

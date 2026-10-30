@@ -447,3 +447,8 @@ input[type=number]{font:inherit;font-size:14.5px;color:var(--ink);background:var
 .notegroup{border-bottom:1px solid var(--line);padding-bottom:8px}
 
 .panel.mchats{margin-bottom:16px}
+
+/* My updates from anywhere */
+.updbtn{display:inline-flex;align-items:center;gap:6px}
+.updbtn svg{width:16px;height:16px}
+.updpanel{margin-top:-4px;border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.08)}
