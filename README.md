@@ -55,7 +55,16 @@ The prompts are in [`server/prompts.js`](server/prompts.js). Tester text is alwa
 If no AI key is set, or the AI is busy, the app uses a basic rule check instead and says so on screen.
 
 ---
+## Run it on Render
 
+**Try it now: https://releaseready-0yvz.onrender.com**
+
+No install or account needed. Just open the link in your browser. The AI features use Google Gemini, and the data is saved in Supabase.
+
+- **First load can take about a minute.** The app runs on Render's free plan, which sleeps when nobody is using it. After the first load it is fast.
+- **If you see the setup screen,** enter the app name, the number of testers and their names, then start. Everyone who opens the link shares the same test cycle, and **Reset demo** clears it for everyone.
+- **Try both sides.** Use **Switch interface** at the top to move between the UAT manager and a tester.
+- **If the AI is busy** (free usage limit), the app switches to a basic rule check and says so on screen. Everything else keeps working.
 ## Run it on your computer
 
 You need **[Node.js](https://nodejs.org) 18 or newer**. There are no other packages to install.
