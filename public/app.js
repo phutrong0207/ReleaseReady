@@ -813,6 +813,15 @@ function myFeedback() {
 }
 
 /* ===================== MANAGER INTERFACE ===================== */
+// Chats: every comment chat in this test cycle, newest first. It opens and closes like the tester's Inbox.
+function mgrChats() {
+  const seen = new Set(), t = m => /T/.test(m.at || '') ? m.at : '';
+  const list = comments().map(c => { const g = chatGroup(c.id), k = g.ids.join(','); if (seen.has(k)) return null; const ms = chatMsgs(g); if (!ms.length) return null; seen.add(k); return { c, g, ms, last: ms[ms.length - 1] }; }).filter(Boolean)
+    .sort((a, b) => t(b.last) < t(a.last) ? -1 : t(b.last) > t(a.last) ? 1 : 0);
+  const wait = list.filter(x => x.last.from !== 'manager').length, open = S.mchatsOpen && list.length;
+  return `<section class="panel mchats"><button class="droptog" data-a="togMChats" aria-expanded="${!!open}"><span class="chev">${open ? '▾' : '▸'}</span><span class="stack" style="gap:2px;text-align:left"><b style="font-size:17px">Chats</b><span class="small muted">${list.length ? `${list.length} chat${list.length !== 1 ? 's' : ''} with testers in this test cycle${wait ? ` · ${wait} waiting for your reply` : ''}` : 'No chats yet. Ask a tester a question under any comment to start one.'}</span></span>${wait ? `<span class="badge inline">${wait}</span>` : ''}</button>
+  ${open ? `<div class="stack">${list.map(({ c, g, last }) => `<div class="box"><div class="row between"><div class="stack" style="gap:3px"><div class="row">${catChip(c)}${last.from !== 'manager' ? '<span class="chip c-bug">Waiting for your reply</span>' : ''}<span class="quote small">${esc(c.tester)}: "${esc(c.text)}"</span></div>${stepUnder(c)}</div>${stageChips(stageOf(c))}</div>${threadHTML(c.id, 'manager')}</div>`).join('')}</div>` : ''}</section>`;
+}
 function v1() {
   const rows = S.script.map((r, i) => { const used = testers().some(t => S.res[t + '|' + r.step]);
     return `<tr><td>${esc(r.scen)}</td><td class="mono">${esc(r.step)}</td><td>${esc(r.screen)}</td><td>${esc(r.act)}</td><td>${esc(r.exp)}</td><td><div class="row" style="gap:4px">${testers().map(t => `<button class="tchip" aria-pressed="${r.who.includes(t)}" data-a="assign" data-i="${i}" data-t="${esc(t)}">${esc(t)}</button>`).join('')}</div></td><td>${used ? '<span class="small muted" title="Testers have results on this step">in use</span>' : `<button class="btn link small" data-a="delStep" data-i="${i}">Remove</button>`}</td></tr>`; }).join('');
@@ -1012,7 +1021,7 @@ function managerUI() {
   <div class="shell"><nav class="rail" aria-label="Sections">
   ${GROUPS.map(g => `<span class="railgroup">${g[0]}</span>${g[1].map(n => secBtn(SECS[n - 1])).join('')}`).join('')}
   </nav>
-  <main>${view.replace(/(<section class="panel"><div class="phead">[\s\S]*?<\/div><\/div>)/, '$1' + guide(S.sec))}</main></div>`;
+  <main>${mgrChats()}${view.replace(/(<section class="panel"><div class="phead">[\s\S]*?<\/div><\/div>)/, '$1' + guide(S.sec))}</main></div>`;
 }
 
 /* ===================== RENDER ===================== */
@@ -1063,6 +1072,7 @@ const A = {
   homeNote: e => { openHomeNote(e.dataset.c, e.dataset.v); return 'keep'; },
   togG: e => { const v = e.dataset.v; if (CY.openG[v]) delete CY.openG[v]; else CY.openG[v] = true; },
   togInbox: () => { S.inboxOpen = !S.inboxOpen; },
+  togMChats: () => { S.mchatsOpen = !S.mchatsOpen; },
   homeReadAll: () => { const items = CY.notes.filter(n => !n.is_read).map(n => ({ cycle: n.cycle, id: n.id, row: stripCycle(n) })); CY.notes.forEach(n => { n.is_read = true; }); api('/api/notes/read', { items }).catch(() => {}); },
   ttab: e => { S.ttab = e.dataset.v; },
   sec: e => { S.sec = +e.dataset.v; window.scrollTo({ top: 0 }); },
@@ -1207,7 +1217,7 @@ function chatPost(pid, from, text, img) {
   toast(from === 'manager' ? 'Sent to ' + people.join(', ') : 'Sent to the chat');
 }
 // What can still be clicked in a completed test cycle: looking around, not changing anything.
-const VIEW_OK = new Set(['role', 'login', 'logout', 'homeNote', 'homeReadAll', 'togG', 'togInbox', 'ttab', 'sec', 'mtester', 'openStep', 'openPanel', 'closePanel', 'zoom', 'unzoom', 'tOpen', 'seeTicket', 'openNote', 'readAll', 'reopenCycle', 'goHome', 'openCycle', 'hideGuide', 'showGuide', 'f3', 'tog3', 'togAll', 'askReset', 'cancelReset', 'doReset', 'htab', 'cancelEnd', 'closeForm', 'retryBoot']);
+const VIEW_OK = new Set(['role', 'login', 'logout', 'homeNote', 'homeReadAll', 'togG', 'togInbox', 'togMChats', 'ttab', 'sec', 'mtester', 'openStep', 'openPanel', 'closePanel', 'zoom', 'unzoom', 'tOpen', 'seeTicket', 'openNote', 'readAll', 'reopenCycle', 'goHome', 'openCycle', 'hideGuide', 'showGuide', 'f3', 'tog3', 'togAll', 'askReset', 'cancelReset', 'doReset', 'htab', 'cancelEnd', 'closeForm', 'retryBoot']);
 const readOnlyNote = () => toast('This test cycle is completed. Click "Reopen test cycle" to change it.');
 document.addEventListener('click', async ev => {
   const el = ev.target.closest('[data-a]'); if (!el || ['SELECT', 'TEXTAREA', 'INPUT'].includes(el.tagName)) return;

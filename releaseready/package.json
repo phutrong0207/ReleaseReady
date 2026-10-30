@@ -1,0 +1,13 @@
+{
+  "name": "releaseready",
+  "version": "1.0.0",
+  "description": "UAT feedback app: guided tester comments, duplicate finder, AI ticket drafter, human approval at every step.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true
+}

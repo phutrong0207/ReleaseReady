@@ -12,7 +12,7 @@ ReleaseReady follows a bug all the way through user acceptance testing (UAT): fr
 
 **Many test cycles.** The app opens on *Hi UAT manager*, with three tabs: **Test Cycles In Progress**, **Completed Test Cycles** and **Add a new test cycle**. Open any test cycle to work on it, and use *← All test cycles* to switch. **End test cycle** moves it to Completed, where it can be viewed (read only) or reopened. In the Tester interface, a tester picks their name from everyone in every test cycle, then sees *Hi tester (name)* with their **Test Cycles In Progress** and **Completed Test Cycles**.
 
-Inside a test cycle, the tester's **Inbox** drop-down lists only the comments the UAT manager has written about, each with its chat. Merged comments share one **group chat** with the UAT manager and every tester who reported the problem.
+Inside a test cycle, the tester's **Inbox** drop-down lists only the comments the UAT manager has written about, each with its chat. The UAT manager has a **Chats** drop-down at the top of every section of a test cycle: every chat in that test cycle, newest first, with the ones waiting for a reply marked. Merged comments share one **group chat** with the UAT manager and every tester who reported the problem.
 
 **My updates is on the first screen**, for the UAT manager and for each tester: notifications from every test cycle, with one drop-down per test cycle. Clicking one opens that test cycle at the comment or chat it is about.
 
@@ -57,7 +57,7 @@ ReleaseReady has two interfaces, switched at the top of the page.
 | Ticket drafter | **AI (Google Gemini).** Writes one ticket from all linked comments and the problem chat, using only reported facts. Thinking is set low, so drafts come back in seconds. |
 | Duplicate finder | **Rules**, so every point is visible: same step (35) + same screen (20) + wording alike (up to 30) + both show an error or screenshot (15). |
 | Already-known check | **Rules:** similar words, same area, ticket status. |
-| Clarity check | **Rules:** summary length, numbered steps, no "didn't work", and so on. |
+| Clarity check | **Rules that read the meaning, not the word count:** the summary says what goes wrong and where, the actual result matches what testers reported, the expected result comes from the test script. Every cross says why and what would fix it. |
 
 The prompts are in [`server/prompts.js`](server/prompts.js). Tester text is always passed as data inside `"""` quotes, and the model is told not to follow instructions inside it.
 

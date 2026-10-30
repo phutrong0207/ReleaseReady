@@ -445,3 +445,5 @@ input[type=number]{font:inherit;font-size:14.5px;color:var(--ink);background:var
 .droptog .badge{position:static}
 .droptog:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .notegroup{border-bottom:1px solid var(--line);padding-bottom:8px}
+
+.panel.mchats{margin-bottom:16px}
