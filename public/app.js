@@ -508,7 +508,7 @@ function draft(p) {
   return {
     summary: `${st.screen || st.scen}: ${short(c.text, 80)}`, type: p.kind === 'idea' ? 'Improvement' : 'Bug',
     description: `Found during UAT of ${appName()}. Reported by ${[...new Set(p.members.map(m => m.tester))].join(', ')} on step ${[...new Set(p.members.map(m => m.step))].join(' and ')}.${answers.length ? ' Follow-up answers: ' + answers.join('; ') + '.' : ''}`,
-    steps: `1. Go to ${st.screen || st.scen}\n2. ${st.act}`, expected: expectedOf(p) || st.exp, actual: p.members.map(m => `${m.tester}: "${m.text}"`).join(' / '),
+    steps: `1. Go to ${st.screen || st.scen}\n2. ${st.act}`, expected: p.kind === 'idea' ? p.members.map(m => `${m.tester}: "${m.text}"`).join(' / ') : expectedOf(p) || st.exp, actual: p.kind === 'idea' ? '' : p.members.map(m => `${m.tester}: "${m.text}"`).join(' / '),
     env: 'UAT · ' + (envs.join('; ') || 'Not reported'), priority: p.kind === 'idea' ? 'Low' : 'Medium', why: '', epic: p.kind === 'idea' ? 'UX improvements' : st.scen, labels: p.kind === 'idea' ? 'uat, idea' : 'uat'
   };
 }
@@ -520,8 +520,8 @@ async function aiDraft(p, fresh) {
     const envs = [...new Set(p.members.map(m => (S.res[m.tester + '|' + m.step] || {}).env).filter(Boolean))];
     const j = await api('/api/draft-ticket', { app: appName(), kind: p.kind, epics: epics(), envs, members: p.members.map(m => { const st = step(m.step); return { tester: m.tester, step: { scen: st.scen, step: st.step, screen: st.screen, act: st.act, exp: st.exp }, r: m.r, cat: m.cat, shot: !!(m.shot && m.primary), text: m.text, thread: m.thread.map(x => ({ from: x.from, text: x.text })) }; }), chat: (S.chats[p.pid] || []).map(x => ({ from: x.from === 'manager' ? 'UAT manager' : x.from, text: x.text })), fresh: !!fresh }, { signal: ctl.signal });
     const base = draft(p), str = v => typeof v === 'string' ? v.trim() : '';
-    S.drafts[pid] = { summary: str(j.summary) || base.summary, type: ['Bug', 'Improvement'].includes(j.type) ? j.type : base.type, description: str(j.description) || base.description,
-      steps: str(j.steps).replace(/\\n/g, '\n') || base.steps, expected: base.expected, actual: saysSomething(str(j.actual)) ? str(j.actual) : base.actual, env: str(j.env) || base.env,
+    S.drafts[pid] = { summary: str(j.summary) || base.summary, type: p.kind === 'idea' ? 'Improvement' : ['Bug', 'Improvement'].includes(j.type) ? j.type : base.type, description: str(j.description) || base.description,
+      steps: str(j.steps).replace(/\\n/g, '\n') || base.steps, expected: p.kind === 'idea' && saysSomething(str(j.expected)) ? str(j.expected) : base.expected, actual: saysSomething(str(j.actual)) ? str(j.actual) : base.actual, env: str(j.env) || base.env,
       priority: ['High', 'Medium', 'Low'].includes(j.priority) ? j.priority : base.priority, why: str(j.why), epic: epics().includes(j.epic) ? j.epic : base.epic, labels: str(j.labels) || 'uat', _src: 'ai' };
     delete S.drafting[pid]; S.open = pid;
   } catch (e) {
@@ -543,6 +543,18 @@ function vagueCheck(d, p) {
   const sum = d.summary || '', sumTok = tokens(sum), sumWhere = [...sumTok].some(w => where.has(w)), sumWhat = [...sumTok].some(w => !where.has(w)) || HAPPENED.test(sum);
   const act = d.actual || '', tw = tokens(words), actSeen = tw.size ? [...tokens(act)].some(w => tw.has(w)) : HAPPENED.test(act) || tokens(act).size > 0;   // it must match what the testers reported
   const quote = words ? ` What the testers wrote: "${short(words, 110)}"` : '';
+  if (p && p.kind === 'idea') {
+    const sug = d.expected || '', sugIdea = tw.size ? [...tokens(sug)].some(w => tw.has(w)) : saysSomething(sug);
+    return [
+      ['Summary says what should improve and where', saysSomething(sum) && sumWhere, !saysSomething(sum) ? 'Say what should be better.' : `Say where it applies${st ? `, for example the ${st.screen || st.scen} screen` : ''}.`],
+      ['Steps show where to see it (numbered)', stepLines.length >= 1, 'Write numbered lines that lead to the place the idea is about: "1. ...".'],
+      ['Current behaviour is described', saysSomething(act), 'Say how the app works today, the thing the idea wants to change.'],
+      ['Suggested change matches the idea', saysSomething(sug) && sugIdea, !saysSomething(sug) ? 'Say what should change.' + quote : 'It does not match the idea the testers gave.' + quote],
+      ['Environment named', saysSomething(d.env), 'Name the browser and system, for example "UAT · Chrome on Windows".'],
+      ['Priority has a reason', saysSomething(d.why), 'Say why this priority, for example "Nice to have, asked for by 1 tester".'],
+      ['Linked to an epic', !!d.epic, 'Choose an epic.']
+    ];
+  }
   return [
     ['Summary says what breaks and where', saysSomething(sum) && sumWhat && sumWhere,
       !saysSomething(sum) ? 'It does not say what goes wrong yet.' : !sumWhere ? `Say where it happens${st ? `, for example the ${st.screen || st.scen} screen` : ''}.` : 'Say what goes wrong there.'],
@@ -980,18 +992,19 @@ function ticketForm(p) {
   const ep = epics().includes(d.epic) ? epics() : [d.epic, ...epics()];
   return `<div class="box hl"><div class="row between"><span class="eyebrow">${d._src === 'ai' ? `New ticket · drafted by AI from ${p.members.length} comment${p.members.length > 1 ? 's' : ''} · check and edit every field` : 'New ticket · basic draft (AI not available) · edit anything'}</span><div class="row">${aiReady() ? `<button class="btn sm" data-a="redraft" data-p="${esc(p.pid)}">Redraft with AI</button>` : ''}<button class="btn link small" data-a="closeForm">Close</button></div></div>${d._note ? `<span class="small muted">${esc(d._note)}</span>` : ''}
   <div class="form">${f('summary', 'Summary', 0, true)}${sel('type', 'Issue type', ['Bug', 'Improvement'])}${sel('epic', 'Linked epic', ep)}
-  ${f('description', 'Description', 2, true)}${f('steps', 'Steps to reproduce', 4, true)}${f('expected', 'Expected result (from the test script)', 2)}${f('actual', 'Actual result', 2)}
+  ${f('description', 'Description', 2, true)}${p.kind === 'idea' ? `${f('steps', 'Where to see it (steps)', 4, true)}${f('actual', 'Current behaviour (how it works today)', 2)}${f('expected', 'Suggested change (the testers\' idea)', 2)}` : `${f('steps', 'Steps to reproduce', 4, true)}${f('expected', 'Expected result (from the test script)', 2)}${f('actual', 'Actual result', 2)}`}
   ${f('env', 'Environment')}${f('labels', 'Labels')}${sel('priority', 'Priority', ['High', 'Medium', 'Low'])}${f('why', 'Why this priority', 2)}</div>
   <div class="why"><b>Evidence attached · testers' original words kept</b>${p.members.map(m => `<span>${esc(m.tester)}, step ${esc(m.step)}: <span class="quote">"${esc(m.text)}"</span>${m.shot && m.primary ? `<span style="display:block;margin-top:4px">${shotOf(m)}</span>` : ''}${m.thread.filter(x => x.from === 'tester').map(x => ` · answered: "${esc(x.text)}"`).join('')}</span>`).join('')}${(S.chats[p.pid] || []).filter(x => x.from !== 'manager').map(x => `<span>${esc(x.from)} in the chat: <span class="quote">"${esc(x.text)}"</span></span>`).join('')}</div>
   <div class="box sunk"><span style="font-weight:600">Clarity check: could a developer act on this without asking?</span><div class="check" id="vchk"></div></div>
-  <div class="row"><button class="btn go" id="createBtn" data-a="create" data-p="${esc(p.pid)}">Create ticket</button><span class="small muted" id="vmsg"></span></div></div>`;
+  <div class="row"><button class="btn go" id="createBtn" data-a="create" data-p="${esc(p.pid)}">Create ticket</button><button class="btn" id="createAnyway" data-a="askAnyway" data-p="${esc(p.pid)}" hidden>Make a ticket anyway</button><span class="small muted" id="vmsg"></span></div>
+  ${S.anyway === p.pid ? `<div class="ask"><b>Make the ticket anyway?</b><span class="small">These items are not clear yet: ${esc(vagueCheck(d, p).filter(c => !c[1]).map(c => c[0]).join('; '))}. The ticket will be marked "Created with gaps" so the developer knows to ask.</span><div class="row"><button class="btn sm go" data-a="create" data-p="${esc(p.pid)}" data-force="1">Yes, make it anyway</button><button class="btn sm" data-a="cancelAnyway">Keep editing</button></div></div>` : ''}</div>`;
 }
 function renderCheck() {
   const d = S.open && S.drafts[S.open], box = document.getElementById('vchk'); if (!d || !box) return;
   const P = problems(), p = [...P.bugs, ...P.ideas].find(x => x.pid === S.open), ch = vagueCheck(d, p), bad = ch.filter(c => !c[1]).length;
   box.innerHTML = ch.map(c => `<div class="sig">${mark(c[1])}<span>${esc(c[0])}${c[1] ? '' : `<span class="small q" style="display:block">${esc(c[2])}</span>`}</span></div>`).join('');
-  document.getElementById('createBtn').disabled = !!bad;
-  document.getElementById('vmsg').textContent = bad ? `Still vague: fix ${bad} item${bad > 1 ? 's' : ''} before creating.` : 'Clear enough for a developer to act on.';
+  document.getElementById('createBtn').disabled = !!bad; const an = document.getElementById('createAnyway'); if (an) an.hidden = !bad;
+  document.getElementById('vmsg').textContent = bad ? `Still vague: fix ${bad} item${bad > 1 ? 's' : ''}, or make the ticket anyway.` : 'Clear enough for a developer to act on.';
 }
 const roomPeople = p => [...new Set(p.members.map(m => m.tester))];
 function chatHTML(p, me) { return threadHTML(p.members[0].id, me === 'manager' ? 'manager' : 'tester'); }
@@ -1045,8 +1058,8 @@ function v4() {
 }
 function v5() {
   const rows = S.tickets.map(t => { const open = S.openTicket === t.key;
-    return `<tr class="${t.src === 'UAT' ? 'new' : ''}"><td>${t.d ? `<button class="btn link mono" data-a="tOpen" data-v="${esc(t.key)}">${esc(t.key)}</button>` : `<span class="mono">${esc(t.key)}</span>`}</td><td>${esc(t.summary)}${t.links ? `<div class="small muted">+${t.links} UAT report${t.links > 1 ? 's' : ''} linked</div>` : ''}</td><td>${esc(t.type)}</td><td>${esc(t.priority)}</td><td>${esc(t.epic)}</td><td><select aria-label="Status of ${esc(t.key)}" id="st-${esc(t.key)}" data-a="tStatus" data-v="${esc(t.key)}">${['To do', 'In progress', 'Done'].map(s => `<option ${s === t.status ? 'selected' : ''}>${s}</option>`).join('')}</select></td><td>${t.reopened ? '<span class="chip c-bug">Reopened</span>' : `<span class="small muted">${(t.ev || []).length + (t.links || 0)} report${(t.ev || []).length + (t.links || 0) !== 1 ? 's' : ''}</span>`}</td></tr>
-    ${open && t.d ? `<tr class="tdetail"><td colspan="7"><div class="form"><div class="stack wide"><b>Description</b><span>${esc(t.d.description)}</span></div><div class="stack wide"><b>Steps to reproduce</b><span style="white-space:pre-line">${esc(t.d.steps)}</span></div><div class="stack"><b>Expected</b><span>${esc(t.d.expected)}</span></div><div class="stack"><b>Actual</b><span>${esc(t.d.actual)}</span></div><div class="stack"><b>Environment</b><span>${esc(t.d.env)}</span></div><div class="stack"><b>Priority reason</b><span>${esc(t.d.why)}</span></div><div class="stack wide"><b>Evidence</b>${(t.ev || []).map(m => `<span>${esc(m.tester)}: <span class="quote">"${esc(m.text)}"</span></span>`).join('')}</div></div></td></tr>` : ''}`; }).join('');
+    return `<tr class="${t.src === 'UAT' ? 'new' : ''}"><td>${t.d ? `<button class="btn link mono" data-a="tOpen" data-v="${esc(t.key)}">${esc(t.key)}</button>` : `<span class="mono">${esc(t.key)}</span>`}</td><td>${esc(t.summary)}${t.d && t.d.gaps && t.d.gaps.length ? `<div class="small q">Created with gaps: ${esc(t.d.gaps.join('; '))}</div>` : ''}${t.links ? `<div class="small muted">+${t.links} UAT report${t.links > 1 ? 's' : ''} linked</div>` : ''}</td><td>${esc(t.type)}</td><td>${esc(t.priority)}</td><td>${esc(t.epic)}</td><td><select aria-label="Status of ${esc(t.key)}" id="st-${esc(t.key)}" data-a="tStatus" data-v="${esc(t.key)}">${['To do', 'In progress', 'Done'].map(s => `<option ${s === t.status ? 'selected' : ''}>${s}</option>`).join('')}</select></td><td>${t.reopened ? '<span class="chip c-bug">Reopened</span>' : `<span class="small muted">${(t.ev || []).length + (t.links || 0)} report${(t.ev || []).length + (t.links || 0) !== 1 ? 's' : ''}</span>`}</td></tr>
+    ${open && t.d ? `<tr class="tdetail"><td colspan="7"><div class="form"><div class="stack wide"><b>Description</b><span>${esc(t.d.description)}</span></div>${t.d.kind === 'idea' ? `<div class="stack wide"><b>Where to see it</b><span style="white-space:pre-line">${esc(t.d.steps)}</span></div><div class="stack"><b>Current behaviour</b><span>${esc(t.d.actual)}</span></div><div class="stack"><b>Suggested change</b><span>${esc(t.d.expected)}</span></div>` : `<div class="stack wide"><b>Steps to reproduce</b><span style="white-space:pre-line">${esc(t.d.steps)}</span></div><div class="stack"><b>Expected</b><span>${esc(t.d.expected)}</span></div><div class="stack"><b>Actual</b><span>${esc(t.d.actual)}</span></div>`}<div class="stack"><b>Environment</b><span>${esc(t.d.env)}</span></div><div class="stack"><b>Priority reason</b><span>${esc(t.d.why)}</span></div><div class="stack wide"><b>Evidence</b>${(t.ev || []).map(m => `<span>${esc(m.tester)}: <span class="quote">"${esc(m.text)}"</span></span>`).join('')}</div></div></td></tr>` : ''}`; }).join('');
   return `<section class="panel"><div class="phead"><div><span class="eyebrow">Section 5</span><h2>Existing tickets</h2><p class="muted">Every ticket made from Unique problems in this test cycle. Bugs and comments checks new comments against this list, so the same problem never gets two tickets. Change a status and the testers who reported it are told.</p></div></div>
   ${endCycleHTML()}
   ${S.tickets.length ? `<div class="tablewrap"><table><thead><tr><th>Key</th><th>Summary</th><th>Type</th><th>Priority</th><th>Epic</th><th>Status</th><th>Reports</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty"><b>No tickets yet</b><span>Tickets you create in Unique problems appear here.</span></div>'}</section>`;
@@ -1231,12 +1244,14 @@ const A = {
   basicDraft: e => { const pid = e.dataset.p, P = problems(), p = [...P.bugs, ...P.ideas].find(x => x.pid === pid); if (!p) return; S.drafts[pid] = Object.assign(draft(p), { _src: 'basic', _note: 'Basic draft used because the AI was not available.' }); delete S.drafting[pid]; S.open = pid; },
   stopDraft: e => { const d = S.drafting[e.dataset.p]; if (d && d.ctl) d.ctl.abort(); },
   closeForm: () => { S.open = null; },
-  create: e => { const pid = e.dataset.p, d = S.drafts[pid], P = problems(), p = [...P.bugs, ...P.ideas].find(x => x.pid === pid); if (!d || !p || vagueCheck(d, p).some(c => !c[1])) return;
+  create: e => { const pid = e.dataset.p, d = S.drafts[pid], P = problems(), p = [...P.bugs, ...P.ideas].find(x => x.pid === pid); if (!d || !p) return; const gaps = vagueCheck(d, p).filter(c => !c[1]).map(c => c[0]); if (gaps.length && !e.dataset.force) return; S.anyway = null;
     let key; do { key = 'UAT-' + (S.nextKey++); } while (S.tickets.some(t => t.key === key));
-    const fields = { ...d }; delete fields._src; delete fields._note;
+    const fields = { ...d }; delete fields._src; delete fields._note; if (p.kind === 'idea') fields.kind = 'idea'; if (gaps.length) { fields.gaps = gaps; fields.labels = [fields.labels, 'needs-detail'].filter(Boolean).join(', '); }
     S.ptk[pid] = key; S.tickets.unshift({ key, summary: d.summary, type: d.type, priority: d.priority, epic: d.epic, status: 'To do', src: 'UAT', links: 0, d: fields, ev: p.members.map(m => ({ id: m.id, tester: m.tester, step: m.step, text: m.text })), seq: ++S.seq }); S.open = null; delete S.drafts[pid];
     p.members.forEach(m => tell(m.id, p.kind === 'idea' ? MSG.ideaTicket(m, key) : withCredit(MSG.ticket(m, key, d.summary, d.priority), m, p.members), true));
     toast('Ticket ' + key + ' created. ' + [...new Set(p.members.map(m => m.tester))].join(', ') + ' told'); },
+  askAnyway: e => { S.anyway = e.dataset.p; },
+  cancelAnyway: () => { S.anyway = null; },
   seeTicket: e => { S.openTicket = e.dataset.v; S.sec = 5; window.scrollTo({ top: 0 }); },
   tOpen: e => { S.openTicket = S.openTicket === e.dataset.v ? null : e.dataset.v; }
 };

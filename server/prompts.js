@@ -60,10 +60,13 @@ function draftPrompt({ app, kind, members, epics, envs, chat }) {
 Write ONE Jira ticket from the tester feedback below. ${members.length > 1 ? `The UAT manager has confirmed these ${members.length} comments describe the same problem.` : ''} ${kind === 'idea' ? 'This is an idea, not a defect: write it as an Improvement.' : ''}
 Rules:
 - Use only facts in the feedback. Do not invent error messages, numbers or causes.
-- actual: say what the testers saw, using their own words and quoting any message they mention (for example a "Wrong password" message). Write "Not reported" only if no tester said anything about what happened.
+${kind === 'idea' ? `- actual means CURRENT BEHAVIOUR: how the app works today, the thing the idea wants to change. Take it only from what the testers' words show or clearly imply (for example, if a tester asks for a clearer message than "Something went wrong", the current behaviour is that the message only says "Something went wrong"). Do not invent details.
+- expected means SUGGESTED CHANGE: what the testers want instead, in plain words close to theirs. Do not add features they did not ask for. Do NOT copy the test step's expected result.
+- summary: the improvement and where it applies, in 6 to 14 words (for example "Show a specific error message when saving an expense fails").
+- steps: numbered lines that lead to the place the idea is about, each starting "1. ", "2. " and so on.` : `- actual: say what the testers saw, using their own words and quoting any message they mention (for example a "Wrong password" message). Write "Not reported" only if no tester said anything about what happened.
 - expected: copy the expected result from the test step.
 - summary: what the testers saw go wrong, and where (the screen or step), in 6 to 14 words. Base it on the testers' words, not on the expected result. Never "didn't work" or "broken".
-- steps: numbered lines, each starting "1. ", "2. " and so on.
+- steps: numbered lines, each starting "1. ", "2. " and so on.`}
 - Environment (captured automatically from the testers' browsers): ${envs && envs.length ? envs.join('; ') : 'Not reported'}. Start it with "UAT".
 - Priority: High if it blocks a main task, Medium if it hurts but has a workaround, Low if cosmetic or an idea. Explain why in one sentence that mentions how many testers reported it.
 - epic must be exactly one of: ${epics.join(', ')}.
