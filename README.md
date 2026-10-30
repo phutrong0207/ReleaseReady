@@ -4,6 +4,7 @@
 
 ReleaseReady follows a bug all the way through user acceptance testing (UAT): from the test script, to a tester's comment, to duplicate checks, to a clear ticket, to the fix, and back to the tester with a message saying what happened.
 
+> Demo video: _add your link here_
 
 ---
 
