@@ -37,8 +37,11 @@ function draftPrompt({ app, kind, members, epics, envs, chat }) {
   return `You are the ticket drafter inside a user acceptance testing (UAT) tool for ${app || 'the app being tested'}.
 Write ONE Jira ticket from the tester feedback below. ${members.length > 1 ? `The UAT manager has confirmed these ${members.length} comments describe the same problem.` : ''} ${kind === 'idea' ? 'This is an idea, not a defect: write it as an Improvement.' : ''}
 Rules:
-- Use only facts in the feedback. Do not invent error messages, numbers or causes. If something important was not reported, write "Not reported" in that place.
-- The ticket must not be vague: the summary says what breaks and where (6 to 14 words, never "didn't work" or "broken"); steps are numbered lines, each starting "1. ", "2. " and so on; actual says what testers saw.
+- Use only facts in the feedback. Do not invent error messages, numbers or causes.
+- actual: say what the testers saw, using their own words and quoting any message they mention (for example a "Wrong password" message). Write "Not reported" only if no tester said anything about what happened.
+- expected: copy the expected result from the test step.
+- summary: what the testers saw go wrong, and where (the screen or step), in 6 to 14 words. Base it on the testers' words, not on the expected result. Never "didn't work" or "broken".
+- steps: numbered lines, each starting "1. ", "2. " and so on.
 - Environment (captured automatically from the testers' browsers): ${envs && envs.length ? envs.join('; ') : 'Not reported'}. Start it with "UAT".
 - Priority: High if it blocks a main task, Medium if it hurts but has a workaround, Low if cosmetic or an idea. Explain why in one sentence that mentions how many testers reported it.
 - epic must be exactly one of: ${epics.join(', ')}.
