@@ -256,6 +256,8 @@ function aiErrorText(e) {
   if (c === 'rate_limited') return 'The free AI limit is used up for now. Try again in a minute, or use the basic check.';
   if (c === 'cancelled') return 'Stopped.';
   if (c === 'invalid_json') return 'The AI answer could not be read. Try again.';
+  if (c === 'busy') return 'Gemini is overloaded right now (this happens on the free tier). We tried again and with a faster model, but it is still busy. Try again in a minute, or use the basic version.';
+  if (c === 'timeout') return 'Gemini took too long to answer, even with the faster model. Try again, or use the basic version.';
   return 'The AI could not answer just now. Try again, or use the basic check.';
 }
 const VAGUE = /\b(didn'?t work|doesn'?t work|not working|broken|weird|issue|problem)\b/i;
@@ -481,7 +483,7 @@ function draft(p) {
 async function aiDraft(p, fresh) {
   const pid = p.pid;
   if (!aiReady()) { S.drafts[pid] = Object.assign(draft(p), { _src: 'basic' }); S.open = pid; render(); return; }
-  const ctl = new AbortController(); S.drafting[pid] = { status: 'drafting', ctl }; S.open = null; render();
+  const ctl = new AbortController(); S.drafting[pid] = { status: 'drafting', ctl, at: Date.now() }; S.open = null; render();
   try {
     const envs = [...new Set(p.members.map(m => (S.res[m.tester + '|' + m.step] || {}).env).filter(Boolean))];
     const j = await api('/api/draft-ticket', { app: appName(), kind: p.kind, epics: epics(), envs, members: p.members.map(m => { const st = step(m.step); return { tester: m.tester, step: { scen: st.scen, step: st.step, screen: st.screen, act: st.act, exp: st.exp }, r: m.r, cat: m.cat, shot: !!(m.shot && m.primary), text: m.text, thread: m.thread.map(x => ({ from: x.from, text: x.text })) }; }), chat: (S.chats[p.pid] || []).map(x => ({ from: x.from === 'manager' ? 'UAT manager' : x.from, text: x.text })), fresh: !!fresh }, { signal: ctl.signal });
@@ -539,6 +541,7 @@ function tell(cid, text, now) {
 function revoke(cid) { if (cancelMsg(cid)) return true; if (S.sent[cid]) S.fix[cid] = true; return !S.sent[cid]; }
 function safeRender() { if (typing()) { S.renderLater = true; return; } render(); }
 const undoLabel = ids => ids.some(id => S.pending[id]) ? 'Undo' : 'Change decision';
+setInterval(() => { document.querySelectorAll('.el').forEach(e => { e.textContent = Math.round((Date.now() - +e.dataset.from) / 1000); }); }, 1000);
 setInterval(() => { document.querySelectorAll('.cd').forEach(e => { e.textContent = Math.max(0, Math.ceil((+e.dataset.due - Date.now()) / 1000)); }); }, 400);
 function credit(c, group) {
   if (c.thread && c.thread.some(m => m.from === 'tester')) return 'Thank you for answering our question. Your answer is now part of the record for the developer.';
@@ -989,7 +992,7 @@ function v4() {
     return `<div class="stack"><div class="box ${S.open === p.pid ? 'hl' : ''}"><div class="row between"><div class="row"><span class="chip ${p.kind === 'idea' ? 'c-idea' : 'c-bug'}">${p.kind === 'idea' ? 'Good idea' : p.merged ? `Merged · ${p.members.length} comments` : 'Bug'}</span><h3>${esc(p.title)}</h3></div>${key ? `<span class="chip c-ok">${esc(key)} created</span>` : ''}</div>
     <div class="stack" style="gap:6px">${p.members.map(m => `<div class="stack" style="gap:4px"><span class="small"><b>${esc(m.tester)}:</b> <span class="quote">"${esc(m.text)}"</span></span>${stepUnder(m)}${shotOf(m)}</div>`).join('')}</div>
     ${key ? `<span class="small muted">${[...new Set(p.members.map(m => esc(m.tester)))].join(', ')} told: now ticket ${esc(key)}.</span><button class="btn link small" data-a="seeTicket" data-v="${esc(key)}" style="align-self:flex-start">See ${esc(key)} in existing tickets</button>`
-      : dr && dr.status === 'drafting' ? `<div class="row"><span class="chip c-new">AI is writing the ticket draft…</span><span class="small muted">Usually 5 to 30 seconds.</span><button class="btn sm" data-a="stopDraft" data-p="${esc(p.pid)}">Stop</button></div>`
+      : dr && dr.status === 'drafting' ? `<div class="row"><span class="chip c-new">AI is writing the ticket draft…</span><span class="small muted"><span class="el" data-from="${dr.at || Date.now()}">${Math.round((Date.now() - (dr.at || Date.now())) / 1000)}</span> s · usually under 20 s. If Gemini is busy it tries a faster model.</span><button class="btn sm" data-a="stopDraft" data-p="${esc(p.pid)}">Stop</button></div>`
       : S.open === p.pid ? '' : `<div class="row"><button class="btn primary" data-a="makeTicket" data-p="${esc(p.pid)}">${dr && dr.status === 'error' ? 'Try again' : 'Make a ticket'}</button>${dr && dr.status === 'error' ? `<span class="small q">${esc(dr.err)}</span><button class="btn sm" data-a="basicDraft" data-p="${esc(p.pid)}">Use a basic draft</button>` : `<span class="small muted">${aiReady() ? 'The AI drafts it. You check and create.' : 'AI is off: a basic draft is used.'}</span>`}</div>`}
     ${chatHTML(p, 'manager')}</div>
     ${S.open === p.pid && !key && S.drafts[p.pid] ? ticketForm(p) : ''}</div>`; };

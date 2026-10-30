@@ -54,7 +54,7 @@ ReleaseReady has two interfaces, switched at the top of the page.
 | Function | How it works |
 |---|---|
 | Guided comment check | **AI (Google Gemini).** Judges if a comment is helpful and asks one question. Never rewrites the tester's words. |
-| Ticket drafter | **AI (Google Gemini).** Writes one ticket from all linked comments and the problem chat, using only reported facts. Thinking is set low, so drafts come back in seconds. |
+| Ticket drafter | **AI (Google Gemini).** Writes one ticket from all linked comments and the problem chat, using only reported facts. Thinking is set low, so drafts come back in seconds. If Gemini is overloaded or takes over 22 s, it tries again with the faster Flash-Lite model before giving up. |
 | Duplicate finder | **Rules**, so every point is visible: same step (35) + same screen (20) + wording alike (up to 30) + both show an error or screenshot (15). |
 | Already-known check | **Rules:** similar words, same area, ticket status. |
 | Clarity check | **Rules that read the meaning, not the word count:** the summary says what goes wrong and where, the actual result matches what testers reported, the expected result comes from the test script. Every cross says why and what would fix it. |
@@ -113,7 +113,7 @@ supabase/schema.sql  Database tables
 - **No logins.** Anyone who can open the app can act as any tester or as the manager. The database rules allow full access for the app's key. A real version would add company login, roles, and stricter database rules.
 - **Duplicate matching uses word overlap**, not meaning. A real version could use text embeddings while keeping the visible score breakdown.
 - **Screenshots** are resized and stored in the database. A real version would use file storage.
-- **Free Gemini limits** are small. If the limit is reached, use the "Use basic check" button or wait a minute.
+- **Free Gemini limits** are small, and the free tier is sometimes overloaded (error 503). The server retries and falls back to Flash-Lite; if it still fails, use "Use basic check" / "Use a basic draft" or wait a minute. The Render logs show how long each AI call took.
 
 ---
 

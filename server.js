@@ -35,7 +35,7 @@ function readBody(req, limit = 20 * 1024 * 1024) {
     req.on('error', reject);
   });
 }
-const aiStatus = e => ({ ai_off: 503, ai_auth: 503, rate_limited: 429, invalid_json: 502, refused: 422, empty_completion: 502 }[e.code] || 502);
+const aiStatus = e => ({ ai_off: 503, ai_auth: 503, rate_limited: 429, invalid_json: 502, refused: 422, empty_completion: 502, busy: 503, timeout: 504 }[e.code] || 502);
 
 async function api(req, res, url) {
   try {
@@ -78,13 +78,15 @@ async function api(req, res, url) {
     }
     if (req.method === 'POST' && url.pathname === '/api/check-comment') {
       const b = await readBody(req, 200 * 1024);
-      try { return send(res, 200, await ai.askJSON(checkPrompt(b), 'check')); }
-      catch (e) { return send(res, aiStatus(e), { code: e.code || 'upstream_error', message: e.message }); }
+      const ctl = new AbortController();
+      res.on('close', () => { if (!res.writableEnded) ctl.abort(); });   // the browser left: stop asking Gemini
+      try { return send(res, 200, await ai.askJSON(checkPrompt(b), 'check', ctl.signal)); }
+      catch (e) { return send(res, aiStatus(e), { code: e.name === 'AbortError' ? 'cancelled' : (e.code || 'upstream_error'), message: e.message }); }
     }
     if (req.method === 'POST' && url.pathname === '/api/draft-ticket') {
       const b = await readBody(req, 500 * 1024);
       const ctl = new AbortController();
-      req.on('close', () => { if (!res.writableEnded) ctl.abort(); });
+      res.on('close', () => { if (!res.writableEnded) ctl.abort(); });   // the browser left (not req 'close', which fires as soon as the body is read)
       try { return send(res, 200, await ai.askJSON(draftPrompt(b), 'draft', ctl.signal)); }
       catch (e) { return send(res, aiStatus(e), { code: e.name === 'AbortError' ? 'cancelled' : (e.code || 'upstream_error'), message: e.message }); }
     }
