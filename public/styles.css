@@ -369,3 +369,79 @@ input[type=number]{font:inherit;font-size:14.5px;color:var(--ink);background:var
 /* "Needs more detail" flag and the mismatch question */
 .c-thin{background:var(--warn-soft);color:var(--warn)}
 .ask{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:10px;background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent)}
+
+/* Problem chat: the UAT manager and every tester who reported the problem */
+.room{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:10px;background:var(--sunk);border:1px solid var(--line)}
+.room .tmsg{max-width:85%}
+
+/* Chat buttons under comments and problems */
+.chatlaunch{font:inherit;color:var(--ink);text-align:left;display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);cursor:pointer}
+.chatlaunch:hover,.chatlaunch.on{border-color:var(--accent);background:var(--accent-soft)}
+.chatlaunch .cl-last{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.chatlaunch:focus-visible,.iconbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Side chat panel: the step and comment pinned at the top, messages, then the composer */
+.sidepanel{position:fixed;top:0;right:0;bottom:0;z-index:40;width:min(400px,100vw);background:var(--surface);border-left:1px solid var(--line);box-shadow:-12px 0 32px rgba(20,24,48,.12);display:flex;flex-direction:column;gap:12px;padding:calc(16px + env(safe-area-inset-top,0px)) calc(16px + env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) 16px}
+.sidepanel .ph{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sidepanel .ph h3{font-size:18px;margin:0}
+.iconbtn{width:38px;height:38px;border-radius:50%;border:none;background:var(--sunk);color:var(--ink);display:grid;place-items:center;cursor:pointer;flex:none}
+.iconbtn svg{width:18px;height:18px}
+.pctx{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--sunk);max-height:34vh;overflow:auto}
+.pctx-item{display:flex;flex-direction:column;gap:2px;padding-top:6px;border-top:1px solid var(--line)}
+.pmsgs{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:4px 2px}
+.pday{align-self:center;font-size:12.5px;color:var(--muted);padding:4px 0}
+.pm{display:flex;align-items:flex-end;gap:8px;max-width:88%}
+.pm .avatar{width:34px;height:34px;font-size:12px}
+.pm.me{align-self:flex-end;flex-direction:row-reverse;text-align:right}
+.pm .bub{padding:10px 14px;border-radius:16px;border:1px solid var(--line);background:var(--surface);white-space:pre-wrap;overflow-wrap:anywhere;text-align:left}
+.pm.me .bub{background:var(--accent-soft);border-color:transparent}
+.pcomp{border:1px solid var(--ink);border-radius:14px;padding:10px 12px}
+.pcomp textarea{width:100%;border:none;outline:none;resize:none;background:transparent;font:inherit;color:var(--ink)}
+.psend{width:100%;border-radius:999px;padding:12px}
+@media (min-width:1100px){body.haspanel{padding-right:400px}}
+.pcomp textarea,.pcomp textarea:focus{border:none;box-shadow:none;outline:none;padding:0;min-height:0}
+.pcomp:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+
+/* Pictures: open full size on click */
+.shotbtn{padding:0;border:none;background:none;cursor:zoom-in;align-self:flex-start;border-radius:8px;display:inline-block}
+.shotbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.bub .shotimg{max-width:220px;max-height:220px;margin-bottom:6px}
+.bub{display:flex;flex-direction:column}
+.pimg{display:flex;align-items:flex-end;gap:8px;margin-bottom:8px}
+.pimg .shotimg{max-width:120px;max-height:90px}
+.iconbtn.attach{background:transparent;cursor:pointer;position:relative}
+.iconbtn.attach input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.iconbtn.attach svg{width:22px;height:22px}
+.lightbox{position:fixed;inset:0;z-index:60;background:rgba(10,12,24,.82);display:grid;place-items:center;padding:calc(24px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));cursor:zoom-out}
+.lightbox img{max-width:100%;max-height:100%;border-radius:10px;background:#fff}
+.lightbox .iconbtn{position:absolute;top:calc(16px + env(safe-area-inset-top,0px));right:calc(16px + env(safe-area-inset-right,0px))}
+.pctx .shotimg{max-width:160px;max-height:110px}
+.stepdesc{font-size:12.5px;color:var(--muted)}
+
+/* Bugs and comments: the count boxes are filters, scenario headings show or hide their comments */
+.statbtn{font:inherit;color:var(--ink);text-align:left;border:1px solid transparent;cursor:pointer}
+.statbtn:hover{border-color:var(--accent)}
+.statbtn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.statbtn:focus-visible,.scentog:focus-visible,.cyclecard:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.scentog{font:inherit;color:var(--ink);width:100%;background:none;border:none;border-bottom:1px solid var(--line);cursor:pointer;text-align:left;flex-wrap:wrap;padding:4px 0 8px;align-items:center}
+.scentog h3{margin:0}
+.scentog .chev{font-size:14px;color:var(--muted);width:14px}
+.scentog .togtxt{margin-left:auto;color:var(--accent);font-weight:600}
+
+/* Home: test cycles */
+.hometabs{display:flex;flex-wrap:wrap;gap:8px}
+.hometab{font:inherit;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:12px;padding:12px 18px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px}
+.hometab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.hometab .badge{position:static}
+.cyclelist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.cyclecard{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border-radius:12px;border:1px solid var(--line);background:var(--surface);min-width:0}
+.cyclecard h3{margin:0}
+.cyclebar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.badge.zero{background:var(--sunk);color:var(--muted)}
+
+/* Drop-downs: the tester's Inbox and each test cycle in My updates */
+.droptog{font:inherit;color:var(--ink);display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;cursor:pointer;padding:6px 0;text-align:left;flex-wrap:wrap}
+.droptog .chev{font-size:14px;color:var(--muted);width:14px}
+.droptog .badge{position:static}
+.droptog:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.notegroup{border-bottom:1px solid var(--line);padding-bottom:8px}

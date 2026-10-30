@@ -44,19 +44,36 @@ function parseJSON(text) {
   throw new AIError('invalid_json', 'The AI answer could not be read.');
 }
 
+// Newer Flash models "think" before answering, at a medium level by default, which makes ticket drafts slow.
+// These tasks are short and well defined, so keep thinking low. Models that reject the setting are retried without it.
+const noThinking = new Set();
+function thinkingFor(model, which) {
+  if (noThinking.has(model)) return null;
+  if (/gemini-2\.5/.test(model)) return /pro/.test(model) ? null : { thinkingBudget: 0 };
+  return which === 'draft' ? { thinkingLevel: 'low' } : null;   // Flash-Lite already defaults to minimal thinking
+}
+
 async function askJSON(prompt, which, signal) {
   if (!KEY) throw new AIError('ai_off', 'No GEMINI_API_KEY set.');
   const m = await models();
-  const model = m[which];
-  const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+  const model = m[which], started = Date.now();
+  const call = thinking => fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     signal,
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, responseMimeType: 'application/json' }
+      generationConfig: Object.assign({ temperature: 0.2, responseMimeType: 'application/json' }, thinking ? { thinkingConfig: thinking } : {})
     })
   });
+  const thinking = thinkingFor(model, which);
+  let res = await call(thinking);
+  if (!res.ok && res.status === 400 && thinking) {
+    const detail = await res.text();
+    if (/thinking/i.test(detail)) { noThinking.add(model); res = await call(null); }
+    else res = new Response(detail, { status: 400 });
+  }
+  console.log(`AI ${which === 'draft' ? 'ticket draft' : 'comment check'} (${model}): ${((Date.now() - started) / 1000).toFixed(1)} s${res.ok ? '' : ', error ' + res.status}`);
   if (!res.ok) {
     const detail = await res.text();
     if (res.status === 429) throw new AIError('rate_limited', 'The free AI quota is used up for now.');

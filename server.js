@@ -14,7 +14,7 @@ const path = require('path');
   }
 })();
 
-const { createStore } = require('./server/db');
+const { createStore, CYCLE_FIELDS, okCycle } = require('./server/db');
 const ai = require('./server/ai');
 const { checkPrompt, draftPrompt } = require('./server/prompts');
 
@@ -42,12 +42,34 @@ async function api(req, res, url) {
     if (req.method === 'GET' && url.pathname === '/api/config') {
       return send(res, 200, { ai: ai.hasKey() ? 'gemini' : 'none', db: store.kind });
     }
+    if (req.method === 'GET' && url.pathname === '/api/cycles') {
+      return send(res, 200, { cycles: await store.listCycles() });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/cycles/save') {
+      const b = await readBody(req, 100 * 1024), c = {};
+      if (!b.cycle || !okCycle(b.cycle.id)) return send(res, 400, { code: 'bad_cycle', message: 'A test cycle needs a valid id.' });
+      CYCLE_FIELDS.forEach(k => { if (k in b.cycle) c[k] = b.cycle[k]; });
+      await store.saveCycle(c);
+      return send(res, 200, { ok: true });
+    }
+    if (req.method === 'GET' && url.pathname === '/api/notes') {
+      const to = url.searchParams.get('to'); if (!to) return send(res, 400, { code: 'bad_request', message: 'Whose notifications?' });
+      return send(res, 200, { notes: await store.notes(to) });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/notes/read') {
+      const b = await readBody(req, 200 * 1024), items = (b.items || []).filter(i => i && okCycle(i.cycle) && typeof i.id === 'string');
+      if (items.length) await store.markRead(items);
+      return send(res, 200, { ok: true });
+    }
     if (req.method === 'GET' && url.pathname === '/api/data') {
-      return send(res, 200, { tables: await store.loadAll() });
+      const cycle = url.searchParams.get('cycle');
+      if (!okCycle(cycle)) return send(res, 400, { code: 'bad_cycle', message: 'Which test cycle?' });
+      return send(res, 200, { tables: await store.loadAll(cycle) });
     }
     if (req.method === 'POST' && url.pathname === '/api/data/sync') {
       const b = await readBody(req);
-      await store.sync({ upsert: b.upsert || {}, del: b.delete || {} });
+      if (!okCycle(b.cycle)) return send(res, 400, { code: 'bad_cycle', message: 'Which test cycle?' });
+      await store.sync(b.cycle, { upsert: b.upsert || {}, del: b.delete || {} });
       return send(res, 200, { ok: true });
     }
     if (req.method === 'POST' && url.pathname === '/api/data/reset') {
