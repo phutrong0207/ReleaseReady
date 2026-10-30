@@ -198,6 +198,17 @@ setInterval(async () => {
 }, 8000);
 
 /* ===================== NOTIFICATIONS ===================== */
+// Tell a tester when a step is assigned to them or taken off their list.
+// Unassigned again before they read it: the unread message is simply taken back, so a mis-click sends nothing.
+function stepNote(s, t, adding) {
+  const what = `step ${s.step} (${[s.scen, s.screen].filter(Boolean).join(' · ')}): "${s.act}"`;
+  if (adding && S.completed[t] && !isDone(t, s.step)) delete S.completed[t];   // they have something new to finish
+  if (adding) { const j = S.notes.findIndex(n => n.to === t && n.ref.off && !n.read && n.ref.step === s.step); if (j >= 0) { S.notes.splice(j, 1); return; } }   // put back before they read it: say nothing
+  if (adding) { notify(t, 'assign', `A new step was assigned to you: ${what}. Expected result: ${s.exp}. Open it in your test script when you are ready.`, { step: s.step }); return; }
+  const i = S.notes.findIndex(n => n.to === t && n.kind === 'assign' && !n.read && n.ref.step === s.step);
+  if (i >= 0) { S.notes.splice(i, 1); return; }
+  if (assigned(t).length || S.res[t + '|' + s.step]) notify(t, 'update', `Step ${s.step} ("${s.act}") was taken off your list. You do not need to test it. Thank you.`, { step: s.step, off: true });
+}
 function notify(to, kind, text, ref) { S.notes.unshift({ id: uid('n'), to, kind, text, ref: ref || {}, at: nowTime(), read: false, pos: ++S.npos }); }
 const unread = to => S.notes.filter(n => n.to === to && !n.read).length;
 
@@ -215,6 +226,26 @@ function addItem(t, s, cat, text, thin, asPrimary) {
   const it = { id, cat, text: tx, primary: !!asPrimary, thread: [], seq: ++S.seq, thin: !!thin };
   if (asPrimary) res.items.unshift(it); else res.items.push(it);
   notify('manager', 'feedback', asPrimary ? `${t} changed step ${s} to Fail: "${tx}"` : `New ${cat === 'bug' ? 'bug' : 'non-bug'} feedback from ${t} on step ${s}${thin ? ' (needs more detail)' : ''}: "${tx}"`, { cid: id, tester: t });
+}
+// A tester deletes one of their own extra comments. The step's own reason stays (it can be edited instead).
+function delBlocker(cid) {
+  const tk = ticketOfComment(cid); if (tk && tk.key) return `It is already part of ticket ${tk.key}, so it cannot be deleted. You can edit it instead.`;
+  if (S.known[cid] === 'link') return `It is linked to ticket ${S.knownT[cid] || ''}, so it cannot be deleted. You can edit it instead.`;
+  if (S.idea[cid] === 'add') return 'It is already in the Good ideas list, so it cannot be deleted. You can edit it instead.';
+  return '';
+}
+const delAskHTML = i => { const why = delBlocker(i.id);
+  return why ? `<div class="ask"><span class="small">${esc(why)}</span><div class="row"><button class="btn sm" data-a="cancelDelC">OK</button></div></div>`
+    : `<div class="ask"><b>Delete this comment?</b><span class="small">It is removed from your test, and the UAT manager is told. This cannot be undone.</span><div class="row"><button class="btn sm dangerbtn" data-a="delC" data-k="${esc(i.id)}">Yes, delete it</button><button class="btn sm" data-a="cancelDelC">Cancel</button></div></div>`; };
+function deleteItem(cid) {
+  const [t, s] = cid.split('|'), res = S.res[t + '|' + s]; if (!res) return false;
+  const it = res.items.find(i => i.id === cid); if (!it || it.primary || delBlocker(cid)) return false;
+  if (S.pending[cid]) { clearTimeout(S.pending[cid].timer); delete S.pending[cid]; }
+  res.items = res.items.filter(i => i.id !== cid);
+  [S.mem, S.sel, S.known, S.knownT, S.idea, S.checked, S.sent, S.fix, S.appr].forEach(m => { if (m) delete m[cid]; });
+  if (S.panel && S.panel.k === cid) S.panel = null;
+  notify('manager', 'feedback', `${t} deleted their ${it.cat === 'bug' ? 'bug' : 'non-bug'} comment on step ${s}: "${it.text}"`, { tester: t });
+  return true;
 }
 // A tester changes their own words. The manager is told, and sees an "Edited" tag.
 function editItem(cid, text, thin) {
@@ -266,7 +297,7 @@ const HAPPENED = /(froze|freez|stuck|grey|gray|nothing|crash|message|blank|spin|
 const IDEA = /(would be (great|nice|good)|would help|it'?d be nice|could you add|please add|wish|suggest|option to|bigger|dark mode|remember|would like)/i;
 function quality(kind, r, cat, text) {
   const t = (text || '').trim(), w = wc(t);
-  if (cat === 'nonbug') { const ok = w >= 4; return { ok, checks: [['Explains the idea or suggestion', ok]] }; }
+  if (cat === 'nonbug') { const ok = w >= 4; return { ok, checks: [['Says what could be better', ok]] }; }
   if (kind === 'p' && r === 'pass') { const ok = w >= 3; return { ok, checks: [['Says what you saw', ok]], ideaHint: IDEA.test(t) }; }
   const happened = HAPPENED.test(t) && w >= 3, specific = w >= 5 && !/^(it )?(didn'?t|doesn'?t) work\.?$/i.test(t);
   return { ok: happened && specific, checks: [['Says what you did (filled in from the step)', true], ['Says what happened on screen', happened], ['Specific enough to repeat', specific]], ideaHint: IDEA.test(t) };
@@ -277,7 +308,6 @@ const SAYS_BAD = /(not|n't|fail|error|wrong|froze|freez|stuck|crash|missing|blan
 function basicMismatch(kind, r, cat, text) {
   if (cat === 'nonbug') return false;
   if (kind === 'p' && r === 'fail') return SAYS_OK.test(text) && !SAYS_BAD.test(text);
-  if (kind === 'x' && r === 'pass') return SAYS_BAD.test(text);
   return false;
 }
 function basicResult(kind, r, cat, text, note) {
@@ -298,7 +328,7 @@ async function runCheck(kind0, k) {
   S.ai[key] = { status: 'checking', text, r, cat }; render();
   try {
     const j = await api('/api/check-comment', { app: appName(), kind, r, cat, step: { scen: st.scen, step: st.step, screen: st.screen, act: st.act, exp: st.exp }, text });
-    const res = { helpful: !!j.helpful, checks: Array.isArray(j.checks) ? j.checks.slice(0, 4).map(c => ({ label: String(c.label || ''), ok: !!c.ok })) : [], question: String(j.question || ''), looksLikeSuggestion: !!j.looksLikeSuggestion, mismatch: !!j.resultMismatch || basicMismatch(kind, r, cat, text), explain: String(j.explain || ''), source: 'ai' };
+    const res = { helpful: !!j.helpful, checks: Array.isArray(j.checks) ? j.checks.slice(0, 4).map(c => ({ label: String(c.label || ''), ok: !!c.ok })) : [], question: String(j.question || ''), looksLikeSuggestion: !!j.looksLikeSuggestion, mismatch: kind === 'p' && cat !== 'nonbug' && (!!j.resultMismatch || basicMismatch(kind, r, cat, text)), looksLikeBug: cat === 'nonbug' && !!j.looksLikeBug, explain: String(j.explain || ''), source: 'ai' };
     S.ai[key] = { status: 'done', text, r, cat, result: res };
   } catch (e) {
     const msg = aiErrorText(e);
@@ -367,6 +397,7 @@ function resultHTML(res, kind, k, label, note) {
     h += `<span class="small muted">Not sure what to add? Click <b>${kind === 'x' ? 'Add it anyway' : 'Save anyway'}</b> to save it as it is. It will be marked "needs more detail" so the UAT manager can ask you.</span>`;
   }
   const cat = kind === 'p' ? 'bug' : kind === 'e' ? S.ue[k].cat : S.ux[k].cat;
+  if (res.looksLikeBug && kind === 'x') h += `<div class="row"><span class="chip c-bug">Sounds like a problem, not an idea</span><button class="btn sm" data-a="xcat" data-k="${esc(k)}" data-v="bug">Mark as bug feedback</button></div>`;
   if (res.looksLikeSuggestion && cat === 'bug') h += `<div class="row"><span class="chip c-idea">Sounds like a suggestion</span>${kind === 'x' ? `<button class="btn sm" data-a="xcat" data-k="${esc(k)}" data-v="nonbug">Mark as non-bug feedback</button>` : '<span class="muted">After saving, add it as a separate comment marked non-bug feedback.</span>'}</div>`;
   return h;
 }
@@ -676,7 +707,7 @@ function launcher(t, k, title, n, last, ids) {
 const catChip = i => i.cat === 'nonbug' ? '<span class="chip c-idea">Non-bug feedback</span>' : '<span class="chip c-bug">Bug feedback</span>';
 const shotHTML = (src, alt) => src ? `<button class="shotbtn" data-a="zoom" aria-label="Open the picture full size"><img class="shotimg" src="${esc(src)}" alt="${esc(alt || 'Screenshot attached by the tester')}"></button>` : '';
 const shotOf = c => c.primary && c.shot ? shotHTML(c.shot, `Screenshot from ${c.tester}, step ${c.step}`) : '';
-const KIND = { question: ['Question', 'var(--accent)'], reply: ['Reply', 'var(--accent)'], update: ['Status update', 'var(--ok)'], feedback: ['New feedback', 'var(--warn)'], complete: ['Test completed', 'var(--ok)'] };
+const KIND = { assign: ['New step', 'var(--accent)'], question: ['Question', 'var(--accent)'], reply: ['Reply', 'var(--accent)'], update: ['Status update', 'var(--ok)'], feedback: ['New feedback', 'var(--warn)'], complete: ['Test completed', 'var(--ok)'] };
 function noteList(to) {
   const ns = S.notes.filter(n => n.to === to);
   if (!ns.length) return '<div class="empty small">No messages yet.</div>';
@@ -770,7 +801,7 @@ function tStep(s) {
   }
   const x = S.ux[k];
   const items = res.items.map(i => { const c = comments().find(z => z.id === i.id); const st = c ? stageOf(c) : 0;
-    return `<div class="citem" id="cm-${esc(i.id)}"><div class="row between"><div class="row">${catChip(i)}${i.primary ? '<span class="small muted">Reason for result</span>' : ''}</div>${c ? stageChips(st) : '<span class="small muted">Pass recorded</span>'}</div>${S.ue[i.id] ? editBox(i) : `<div class="row between" style="align-items:flex-start;flex-wrap:nowrap"><span class="quote">"${esc(i.text)}"</span><button class="btn link small" data-a="editC" data-k="${esc(i.id)}" style="flex:none">Edit</button></div>${i.edited ? '<span class="small muted">Edited</span>' : ''}${i.thin ? '<span class="small q">Marked "needs more detail". Add more detail with <b>Edit</b>, or answer the UAT manager in the chat.</span>' : ''}`}${i.primary ? shotHTML(res.shot) : ''}${threadHTML(i.id, 'tester')}</div>`; }).join('') || (res.r === 'pass' ? '<span class="small muted">Passed. No comment needed. You can add an idea or suggestion below.</span>' : '');
+    return `<div class="citem" id="cm-${esc(i.id)}"><div class="row between"><div class="row">${catChip(i)}${i.primary ? '<span class="small muted">Reason for result</span>' : ''}</div>${c ? stageChips(st) : '<span class="small muted">Pass recorded</span>'}</div>${S.ue[i.id] ? editBox(i) : `<div class="row between" style="align-items:flex-start;flex-wrap:nowrap"><span class="quote">"${esc(i.text)}"</span><span class="row" style="flex:none;gap:4px"><button class="btn link small" data-a="editC" data-k="${esc(i.id)}">Edit</button>${i.primary ? '' : `<button class="btn link small" data-a="askDelC" data-k="${esc(i.id)}">Delete</button>`}</span></div>${S.delAsk === i.id ? delAskHTML(i) : ''}${i.edited ? '<span class="small muted">Edited</span>' : ''}${i.thin ? '<span class="small q">Marked "needs more detail". Add more detail with <b>Edit</b>, or answer the UAT manager in the chat.</span>' : ''}`}${i.primary ? shotHTML(res.shot) : ''}${threadHTML(i.id, 'tester')}</div>`; }).join('') || (res.r === 'pass' ? '<span class="small muted">Passed. No comment needed. You can add an idea or suggestion below.</span>' : '');
   let add = '';
   if (x && x.open) { const ok = canSave('x', k);
     add = `<div class="box sunk"><span class="eyebrow">Add a comment to step ${esc(s.step)}</span>
@@ -1118,7 +1149,7 @@ const A = {
     toast(`"${name}" is set up. Now add the test steps.`);
   },
   addTester: () => { const n = val('nt-name').trim(); if (!n || n.includes('|') || testers().some(t => t.toLowerCase() === n.toLowerCase())) { toast(n ? 'That name is already used or not allowed.' : 'Type a name first.'); return; } S.testers.push({ name: n }); toast(n + ' added'); },
-  assign: e => { const s = S.script[+e.dataset.i], t = e.dataset.t; s.who = s.who.includes(t) ? s.who.filter(x => x !== t) : [...s.who, t]; },
+  assign: e => { const s = S.script[+e.dataset.i], t = e.dataset.t, adding = !s.who.includes(t); s.who = adding ? [...s.who, t] : s.who.filter(x => x !== t); stepNote(s, t, adding); },
   delStep: e => { S.script.splice(+e.dataset.i, 1); },
   addStep: () => {
     const sc = val('ns-scen').trim(), screen = val('ns-screen').trim(), act = val('ns-act').trim(), ex = val('ns-exp').trim();
@@ -1138,6 +1169,9 @@ const A = {
   setR: e => { S.ui[e.dataset.k].r = e.dataset.v; },
   saveAnyway: e => { const kind = e.dataset.f, k = e.dataset.k; if (!(kind === 'p' ? S.ui[k] : kind === 'e' ? S.ue[k] : S.ux[k])) return; commit(kind, k, thinFor(kind, k)); },
   keepSave: e => { const kind = e.dataset.f, k = e.dataset.k; if (!(kind === 'p' ? S.ui[k] : kind === 'e' ? S.ue[k] : S.ux[k])) return; commit(kind, k, thinFor(kind, k)); },
+  askDelC: e => { S.delAsk = e.dataset.k; },
+  cancelDelC: () => { S.delAsk = null; },
+  delC: e => { const ok = deleteItem(e.dataset.k); S.delAsk = null; toast(ok ? 'Comment deleted. The UAT manager has been told.' : 'This comment cannot be deleted.'); },
   editC: e => { const it = itemById(e.dataset.k); if (!it) return; S.ue[e.dataset.k] = { text: it.text, cat: it.cat, primary: !!it.primary, orig: it.text }; S.focusInput = 'e-' + e.dataset.k; },
   cancelE: e => { delete S.ue[e.dataset.k]; delete S.ai['e:' + e.dataset.k]; },
   saveE: e => { const k = e.dataset.k; if (!S.ue[k]) return 'keep'; if ((S.ue[k].text || '').trim() === S.ue[k].orig) { delete S.ue[k]; toast('No changes to save.'); return; } if (canSave('e', k)) trySave('e', k); return 'keep'; },
@@ -1154,7 +1188,7 @@ const A = {
     if (n.ref.room) { if (n.to === 'manager') S.sec = 4; S.panel = { t: 'room', k: n.ref.room }; return; }   // older group-chat notifications
     if (n.ref.cid && (n.kind === 'question' || n.kind === 'reply')) S.panel = { t: 'thread', k: n.ref.cid };
     if (n.to === 'manager') { if (n.ref.tester) { S.sec = 2; S.mtester = n.ref.tester; S.focus = n.ref.cid || null; } }
-    else { S.ttab = 'script'; S.focus = n.ref.cid || null; if (n.ref.cid) { const [t, s] = n.ref.cid.split('|'); S.openStep = t + '|' + s; } } },
+    else { S.ttab = 'script'; S.focus = n.ref.cid || null; if (n.ref.cid) { const [t, s] = n.ref.cid.split('|'); S.openStep = t + '|' + s; } else if (n.ref.step && S.script.some(x => x.step === n.ref.step && x.who.includes(n.to))) S.openStep = n.to + '|' + n.ref.step; } },
   readAll: e => { S.notes.filter(n => n.to === e.dataset.v).forEach(n => n.read = true); },
   merge: e => { const g = triage().groups.find(x => x.anchor === e.dataset.g); if (!g) return; S.groups[g.anchor] = true; g.members.forEach(c => S.mem[c.id] = S.sel[c.id] ? 'in' : 'out'); const ins = g.members.filter(c => S.mem[c.id] === 'in'); g.members.forEach(c => tell(c.id, S.mem[c.id] === 'in' ? withCredit(MSG.merged(c, ins.length), c, ins) : withCredit(MSG.separate(c), c))); toast('Merged into one comment. Approve it when you are ready. Unticked comments are now separate comments.'); },
   noMerge: e => { const g = triage().groups.find(x => x.anchor === e.dataset.g); if (!g) return; S.groups[g.anchor] = false; g.members.forEach(c => tell(c.id, withCredit(MSG.separate(c), c))); toast('Kept separate. Messages send in 10 s (Undo to stop)'); },

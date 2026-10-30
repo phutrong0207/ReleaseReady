@@ -53,7 +53,7 @@ ReleaseReady has two interfaces, switched at the top of the page.
 
 | Function | How it works |
 |---|---|
-| Guided comment check | **AI (Google Gemini).** Judges if a comment is helpful and asks one question. Never rewrites the tester's words. |
+| Guided comment check | **AI (Google Gemini).** Judges if a comment is helpful and asks one question. Never rewrites the tester's words. Ideas (non-bug feedback) are judged as ideas for the manager, not against the step's expected result, and only the step's own reason is checked against its Pass or Fail. Testers can edit or delete their own extra comments. |
 | Ticket drafter | **AI (Google Gemini).** Writes one ticket from all linked comments and the problem chat, using only reported facts. Thinking is set low, so drafts come back in seconds. If Gemini is overloaded or takes over 22 s, it tries again with the faster Flash-Lite model before giving up. |
 | Duplicate finder | **Rules**, so every point is visible: same step (35) + same screen (20) + wording alike (up to 30) + both show an error or screenshot (15). |
 | Already-known check | **Rules:** similar words, same area, ticket status. |
