@@ -474,7 +474,7 @@ function draft(p) {
   return {
     summary: `${st.screen || st.scen}: ${short(c.text, 80)}`, type: p.kind === 'idea' ? 'Improvement' : 'Bug',
     description: `Found during UAT of ${appName()}. Reported by ${[...new Set(p.members.map(m => m.tester))].join(', ')} on step ${[...new Set(p.members.map(m => m.step))].join(' and ')}.${answers.length ? ' Follow-up answers: ' + answers.join('; ') + '.' : ''}`,
-    steps: `1. Go to ${st.screen || st.scen}\n2. ${st.act}`, expected: st.exp, actual: p.members.map(m => m.text).join(' / '),
+    steps: `1. Go to ${st.screen || st.scen}\n2. ${st.act}`, expected: expectedOf(p) || st.exp, actual: p.members.map(m => `${m.tester}: "${m.text}"`).join(' / '),
     env: 'UAT · ' + (envs.join('; ') || 'Not reported'), priority: p.kind === 'idea' ? 'Low' : 'Medium', why: '', epic: p.kind === 'idea' ? 'UX improvements' : st.scen, labels: p.kind === 'idea' ? 'uat, idea' : 'uat'
   };
 }
@@ -487,7 +487,7 @@ async function aiDraft(p, fresh) {
     const j = await api('/api/draft-ticket', { app: appName(), kind: p.kind, epics: epics(), envs, members: p.members.map(m => { const st = step(m.step); return { tester: m.tester, step: { scen: st.scen, step: st.step, screen: st.screen, act: st.act, exp: st.exp }, r: m.r, cat: m.cat, shot: !!(m.shot && m.primary), text: m.text, thread: m.thread.map(x => ({ from: x.from, text: x.text })) }; }), chat: (S.chats[p.pid] || []).map(x => ({ from: x.from === 'manager' ? 'UAT manager' : x.from, text: x.text })), fresh: !!fresh }, { signal: ctl.signal });
     const base = draft(p), str = v => typeof v === 'string' ? v.trim() : '';
     S.drafts[pid] = { summary: str(j.summary) || base.summary, type: ['Bug', 'Improvement'].includes(j.type) ? j.type : base.type, description: str(j.description) || base.description,
-      steps: str(j.steps).replace(/\\n/g, '\n') || base.steps, expected: str(j.expected), actual: str(j.actual), env: str(j.env) || base.env,
+      steps: str(j.steps).replace(/\\n/g, '\n') || base.steps, expected: base.expected, actual: saysSomething(str(j.actual)) ? str(j.actual) : base.actual, env: str(j.env) || base.env,
       priority: ['High', 'Medium', 'Low'].includes(j.priority) ? j.priority : base.priority, why: str(j.why), epic: epics().includes(j.epic) ? j.epic : base.epic, labels: str(j.labels) || 'uat', _src: 'ai' };
     delete S.drafting[pid]; S.open = pid;
   } catch (e) {
@@ -497,16 +497,28 @@ async function aiDraft(p, fresh) {
   }
   TRI = null; render();
 }
-function vagueCheck(d) {
-  const stepLines = (d.steps || '').split('\n').filter(l => /^\s*\d+[.)]/.test(l)).length;
+// The clarity check reads what each field says, not how many words it has. Every cross says why, and what would fix it.
+const PLACEHOLDER = /^\s*(not reported|n\/?a|none|unknown|tbd|todo|-+|\?+|\.+)\s*\.?\s*$/i;
+const vagueOnly = t => { const rest = (t || '').replace(new RegExp(VAGUE.source, 'gi'), ' '); return !tokens(rest).size; };   // nothing left once vague words are taken out
+const saysSomething = t => !!(t || '').trim() && !PLACEHOLDER.test(t) && !vagueOnly(t);
+const testersWords = p => p ? p.members.map(m => m.text).concat(p.members.flatMap(m => m.thread.filter(x => x.from === 'tester').map(x => x.text))).join(' ') : '';
+const expectedOf = p => p ? [...new Set(p.members.map(m => step(m.step).exp).filter(Boolean))].join(' / ') : '';
+function vagueCheck(d, p) {
+  const words = testersWords(p), st = p ? step(p.members[0].step) : null, where = st ? tokens([st.screen, st.scen, st.act].join(' ')) : new Set();
+  const stepLines = (d.steps || '').split('\n').filter(l => /^\s*\d+[.)]/.test(l) && saysSomething(l.replace(/^\s*\d+[.)]/, '')));
+  const sum = d.summary || '', sumTok = tokens(sum), sumWhere = [...sumTok].some(w => where.has(w)), sumWhat = [...sumTok].some(w => !where.has(w)) || HAPPENED.test(sum);
+  const act = d.actual || '', tw = tokens(words), actSeen = tw.size ? [...tokens(act)].some(w => tw.has(w)) : HAPPENED.test(act) || tokens(act).size > 0;   // it must match what the testers reported
+  const quote = words ? ` What the testers wrote: "${short(words, 110)}"` : '';
   return [
-    ['Summary says what breaks and where (6+ words, no "didn\'t work")', wc(d.summary) >= 6 && !VAGUE.test(d.summary)],
-    ['At least 2 numbered steps to reproduce', stepLines >= 2],
-    ['Expected result is stated', wc(d.expected) >= 3],
-    ['Actual result describes what was seen (6+ words, no vague words)', wc(d.actual) >= 6 && !VAGUE.test(d.actual)],
-    ['Environment named', wc(d.env) >= 2],
-    ['Priority has a reason', wc(d.why) >= 3],
-    ['Linked to an epic', !!d.epic]
+    ['Summary says what breaks and where', saysSomething(sum) && sumWhat && sumWhere,
+      !saysSomething(sum) ? 'It does not say what goes wrong yet.' : !sumWhere ? `Say where it happens${st ? `, for example the ${st.screen || st.scen} screen` : ''}.` : 'Say what goes wrong there.'],
+    ['Steps to reproduce are numbered', stepLines.length >= 1, 'Write the steps as numbered lines: "1. ...".'],
+    ['Expected result is stated', saysSomething(d.expected), `Use the expected result from the test script${st ? `: "${expectedOf(p)}"` : ''}.`],
+    ['Actual result describes what the testers saw', saysSomething(act) && actSeen,
+      !saysSomething(act) ? 'It does not say what the testers saw yet.' + quote : 'It does not match what the testers reported.' + quote],
+    ['Environment named', saysSomething(d.env), 'Name the browser and system, for example "UAT · Chrome on Windows".'],
+    ['Priority has a reason', saysSomething(d.why), 'Say why this priority, for example "It blocks signing in, reported by 2 testers".'],
+    ['Linked to an epic', !!d.epic, 'Choose an epic.']
   ];
 }
 
@@ -914,7 +926,7 @@ function ticketForm(p) {
   const ep = epics().includes(d.epic) ? epics() : [d.epic, ...epics()];
   return `<div class="box hl"><div class="row between"><span class="eyebrow">${d._src === 'ai' ? `New ticket · drafted by AI from ${p.members.length} comment${p.members.length > 1 ? 's' : ''} · check and edit every field` : 'New ticket · basic draft (AI not available) · edit anything'}</span><div class="row">${aiReady() ? `<button class="btn sm" data-a="redraft" data-p="${esc(p.pid)}">Redraft with AI</button>` : ''}<button class="btn link small" data-a="closeForm">Close</button></div></div>${d._note ? `<span class="small muted">${esc(d._note)}</span>` : ''}
   <div class="form">${f('summary', 'Summary', 0, true)}${sel('type', 'Issue type', ['Bug', 'Improvement'])}${sel('epic', 'Linked epic', ep)}
-  ${f('description', 'Description', 2, true)}${f('steps', 'Steps to reproduce', 4, true)}${f('expected', 'Expected result', 2)}${f('actual', 'Actual result', 2)}
+  ${f('description', 'Description', 2, true)}${f('steps', 'Steps to reproduce', 4, true)}${f('expected', 'Expected result (from the test script)', 2)}${f('actual', 'Actual result', 2)}
   ${f('env', 'Environment')}${f('labels', 'Labels')}${sel('priority', 'Priority', ['High', 'Medium', 'Low'])}${f('why', 'Why this priority', 2)}</div>
   <div class="why"><b>Evidence attached · testers' original words kept</b>${p.members.map(m => `<span>${esc(m.tester)}, step ${esc(m.step)}: <span class="quote">"${esc(m.text)}"</span>${m.shot && m.primary ? `<span style="display:block;margin-top:4px">${shotOf(m)}</span>` : ''}${m.thread.filter(x => x.from === 'tester').map(x => ` · answered: "${esc(x.text)}"`).join('')}</span>`).join('')}${(S.chats[p.pid] || []).filter(x => x.from !== 'manager').map(x => `<span>${esc(x.from)} in the chat: <span class="quote">"${esc(x.text)}"</span></span>`).join('')}</div>
   <div class="box sunk"><span style="font-weight:600">Clarity check: could a developer act on this without asking?</span><div class="check" id="vchk"></div></div>
@@ -922,8 +934,8 @@ function ticketForm(p) {
 }
 function renderCheck() {
   const d = S.open && S.drafts[S.open], box = document.getElementById('vchk'); if (!d || !box) return;
-  const ch = vagueCheck(d), bad = ch.filter(c => !c[1]).length;
-  box.innerHTML = ch.map(c => `<div class="sig">${mark(c[1])}<span>${esc(c[0])}</span></div>`).join('');
+  const P = problems(), p = [...P.bugs, ...P.ideas].find(x => x.pid === S.open), ch = vagueCheck(d, p), bad = ch.filter(c => !c[1]).length;
+  box.innerHTML = ch.map(c => `<div class="sig">${mark(c[1])}<span>${esc(c[0])}${c[1] ? '' : `<span class="small q" style="display:block">${esc(c[2])}</span>`}</span></div>`).join('');
   document.getElementById('createBtn').disabled = !!bad;
   document.getElementById('vmsg').textContent = bad ? `Still vague: fix ${bad} item${bad > 1 ? 's' : ''} before creating.` : 'Clear enough for a developer to act on.';
 }
@@ -1159,7 +1171,7 @@ const A = {
   basicDraft: e => { const pid = e.dataset.p, P = problems(), p = [...P.bugs, ...P.ideas].find(x => x.pid === pid); if (!p) return; S.drafts[pid] = Object.assign(draft(p), { _src: 'basic', _note: 'Basic draft used because the AI was not available.' }); delete S.drafting[pid]; S.open = pid; },
   stopDraft: e => { const d = S.drafting[e.dataset.p]; if (d && d.ctl) d.ctl.abort(); },
   closeForm: () => { S.open = null; },
-  create: e => { const pid = e.dataset.p, d = S.drafts[pid]; if (!d || vagueCheck(d).some(c => !c[1])) return; const P = problems(), p = [...P.bugs, ...P.ideas].find(x => x.pid === pid); if (!p) return;
+  create: e => { const pid = e.dataset.p, d = S.drafts[pid], P = problems(), p = [...P.bugs, ...P.ideas].find(x => x.pid === pid); if (!d || !p || vagueCheck(d, p).some(c => !c[1])) return;
     let key; do { key = 'UAT-' + (S.nextKey++); } while (S.tickets.some(t => t.key === key));
     const fields = { ...d }; delete fields._src; delete fields._note;
     S.ptk[pid] = key; S.tickets.unshift({ key, summary: d.summary, type: d.type, priority: d.priority, epic: d.epic, status: 'To do', src: 'UAT', links: 0, d: fields, ev: p.members.map(m => ({ id: m.id, tester: m.tester, step: m.step, text: m.text })), seq: ++S.seq }); S.open = null; delete S.drafts[pid];
