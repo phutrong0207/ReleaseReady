@@ -91,23 +91,6 @@ The terminal tells you which database and AI are being used.
 
 ---
 
-## How it is built
-
-```
-server.js            Small Node.js server: serves the page, keeps keys secret, stores data
-server/ai.js         Calls the Gemini API (picks the newest Flash-Lite / Flash models)
-server/prompts.js    The two AI prompts
-server/db.js         Supabase (REST API) or a local JSON file
-public/index.html    The page
-public/app.js        The whole interface: tester and manager views, duplicate finder, messages
-public/styles.css    Styles
-supabase/schema.sql  Database tables
-```
-
-- **Keys stay on the server.** The browser never sees the Gemini key or the database key.
-- **Saving:** the page keeps its state in memory and sends only what changed to the server a moment after each action. The header shows "All changes saved". Other browsers pick up changes every few seconds.
-
----
 
 ## Limits of this prototype
 - **No logins.** Anyone who can open the app can act as any tester or as the manager. The database rules allow full access for the app's key. A real version would add company login, roles, and stricter database rules.
@@ -117,4 +100,4 @@ supabase/schema.sql  Database tables
 
 ---
 
-AI: Google Gemini. Database: Supabase. Built for the "UAT, Untangled" challenge.
+AI: Google Gemini. Database: Supabase.
