@@ -452,3 +452,22 @@ input[type=number]{font:inherit;font-size:14.5px;color:var(--ink);background:var
 .updbtn{display:inline-flex;align-items:center;gap:6px}
 .updbtn svg{width:16px;height:16px}
 .updpanel{margin-top:-4px;border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.08)}
+
+/* AI second opinion in the duplicate finder */
+.aiwhy{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;margin:2px 0}
+.known-ask{border-color:var(--line)}
+
+/* Bugs and comments filters: big status tabs, then small kind chips (they must not look alike) */
+.bigtabs{display:flex;gap:4px;border-bottom:2px solid var(--line);flex-wrap:wrap}
+.bigtab{appearance:none;background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-2px;padding:10px 16px 9px;font:inherit;font-size:16px;font-weight:600;color:var(--muted,#667);cursor:pointer;display:inline-flex;align-items:center;gap:8px;border-radius:8px 8px 0 0}
+.bigtab:hover{background:var(--sunk)}
+.bigtab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.bigtab .bigcount{font-size:13px;font-weight:700;min-width:24px;padding:2px 8px;border-radius:999px;background:var(--sunk);color:var(--ink);text-align:center}
+.bigtab.wait .bigcount{background:var(--warn-soft,#fbecd5);color:var(--warn,#9a6417)}
+.bigtab.done .bigcount{background:var(--ok-soft,#e3f2ea);color:var(--ok,#2f7a52)}
+.bigtab[aria-selected="true"] .bigcount{outline:2px solid currentColor;outline-offset:-2px}
+.subchips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:4px 0}
+.subchip{appearance:none;font:inherit;font-size:12.5px;padding:4px 11px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.subchip b{font-weight:700;margin-left:2px}
+.subchip:hover{border-color:var(--accent)}
+.subchip[aria-pressed="true"]{background:var(--ink);color:var(--bg,#fff);border-color:var(--ink)}

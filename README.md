@@ -38,7 +38,7 @@ ReleaseReady has two interfaces, switched at the top of the page.
 | **My updates** | Notifications: new feedback, answers to your questions, testers who finished. |
 | **1 · Test script** | Add scenarios and steps, add testers, assign testers to steps. |
 | **2 · Testing progress** | Each tester's progress, results, comments and screenshots. Ask a question under any comment. **End test cycle** sends every tester one thank-you summary. |
-| **3 · Bugs and comments** | Every comment waits here until you decide. The count boxes at the top are filters (duplicates, already known, good ideas, unique, need your decision), and each scenario can be shown or hidden. The **duplicate finder** groups comments about the same bug (with a score and reasons). The **already-known check** compares comments with tickets already made in this test cycle. **Good ideas** are flagged. Merging makes one **merged comment** that you then approve; unticked comments become separate comments. You decide each one: Merge / Don't merge, Link / New problem, Approve / Don't approve, Add to Good ideas / Not for now / It's a bug. Approving a comment marked *Needs more detail* asks you to confirm, or to ask the tester first. The tester gets a kind message either way. |
+| **3 · Bugs and comments** | Every comment waits here until you decide. Big tabs at the top filter by status (All comments, Need your decision, Resolved), and small chips under them filter by kind (possible duplicates, already known, good ideas, unique), and each scenario can be shown or hidden. The **duplicate finder** groups comments about the same bug (with a score and reasons). The **already-known check** compares comments with tickets already made in this test cycle. **Good ideas** are flagged. Merging makes one **merged comment** that you then approve; unticked comments become separate comments. You decide each one: Merge / Don't merge, Link / New problem, Approve / Don't approve, Add to Good ideas / Not for now / It's a bug. Approving a comment marked *Needs more detail* asks you to confirm, or to ask the tester first. The tester gets a kind message either way. |
 | **4 · Unique problems** | Approved problems and good ideas. The **chat** of each problem is the same chat as its comments' chats, so nothing asked earlier is lost. **Make a ticket** asks the AI **ticket drafter** to write the ticket from every linked comment, the testers' answers and the chat. A **clarity check** blocks vague tickets. |
 | **5 · Existing tickets** | Every ticket made in this test cycle. Change a status (In progress, Done) and the testers who reported it are told. |
 
@@ -55,7 +55,7 @@ ReleaseReady has two interfaces, switched at the top of the page.
 |---|---|
 | Guided comment check | **AI (Google Gemini).** Judges if a comment is helpful and asks one question. Never rewrites the tester's words. Ideas (non-bug feedback) are judged as ideas for the manager, not against the step's expected result, and only the step's own reason is checked against its Pass or Fail. Testers can edit or delete their own extra comments. |
 | Ticket drafter | **AI (Google Gemini).** Writes one ticket from all linked comments and the problem chat, using only reported facts. Thinking is set low, so drafts come back in seconds. Idea tickets use "Current behaviour" and "Suggested change" instead of Actual and Expected. If the clarity check is not all ✓, the manager can still choose "Make a ticket anyway"; the ticket is then marked "Created with gaps". If Gemini is overloaded or takes over 22 s, it tries again with the faster Flash-Lite model before giving up. |
-| Duplicate finder | **Rules**, so every point is visible: same step (35) + same screen (20) + wording alike (up to 30) + both show an error or screenshot (15). |
+| Duplicate finder and already-known check | **AI (Google Gemini).** The AI compares what each comment means together with the facts (same step, same screen) and against the tickets already made, so the same bug is found even when testers describe it in different words. Every match shows the AI's confidence and a one-line reason, and the app checks the facts (same step, same screen) exactly. The AI never merges or links anything, and never changes a group the manager has already decided. **Quick rules** (same step 35 + same screen 20 + wording up to 30 + error or screenshot 15) are used only as a labelled estimate until the AI has read a new comment, and when the AI is off. |
 | Already-known check | **Rules:** similar words, same area, ticket status. |
 | Clarity check | **Rules that read the meaning, not the word count:** the summary says what goes wrong and where, the actual result matches what testers reported, the expected result comes from the test script. Every cross says why and what would fix it. |
 
@@ -63,16 +63,6 @@ The prompts are in [`server/prompts.js`](server/prompts.js). Tester text is alwa
 
 If no AI key is set, or the AI is busy, the app uses a basic rule check instead and says so on screen.
 
----
-## Run it on Render
-
-**Try it now: https://releaseready-0yvz.onrender.com**
-
-No install or account needed. Just open the link in your browser. The AI features use Google Gemini, and the data is saved in Supabase.
-
-- **First load can take about a minute.** The app runs on Render's free plan, which sleeps when nobody is using it. After the first load it is fast.
-- **Try both sides.** Use **Switch interface** at the top to move between the UAT manager and a tester.
-- **If the AI is busy** (free usage limit), the app switches to a basic rule check and says so on screen. Everything else keeps working.
 ---
 
 ## Run it on your computer
@@ -98,6 +88,43 @@ The terminal tells you which database and AI are being used.
 | `SUPABASE_URL` + `SUPABASE_KEY` | Data is saved in Supabase, so several computers can use the same test cycle. |
 
 **First run:** the app shows *Hi UAT manager*. Add a new test cycle: its name, the app being tested, the number of testers and their names. **Reset demo** deletes every test cycle.
+
+---
+
+## Run it on Render
+
+A live version runs at **https://releaseready-0yvz.onrender.com**. To host your own copy for free:
+
+1. **Set up the database first.** On [Render](https://render.com), the computer that runs the app is reset at every deploy, so the local `data/local-db.json` file would be lost. Create a free [Supabase](https://supabase.com) project and run [`supabase/schema.sql`](supabase/schema.sql) in its SQL editor.
+2. **Put the code on GitHub.** Fork this repository, or upload the files to your own repository.
+3. **Create the web service.** In Render, click **New → Web Service** and connect your GitHub repository.
+4. **Fill in the settings:**
+
+   | Setting | Value |
+   |---|---|
+   | Language | Node |
+   | Branch | `main` |
+   | Build command | `npm install` (there are no packages, so this takes a second) |
+   | Start command | `npm start` |
+   | Instance type | Free |
+
+5. **Add the environment variables.** Under **Environment**, add these. They take the place of the `.env` file, which never goes to GitHub.
+
+   | Key | Value |
+   |---|---|
+   | `SUPABASE_URL` | Your Supabase project URL |
+   | `SUPABASE_KEY` | Your Supabase publishable key |
+   | `GEMINI_API_KEY` | Your Gemini key (optional: without it, the basic checks are used) |
+
+   Do not set `PORT`. Render sets it, and the app reads it.
+6. Click **Create Web Service**. After a minute or two the app is live at `https://<your-service>.onrender.com`.
+
+**Good to know**
+
+- **Updates deploy themselves.** Every commit to `main` on GitHub makes Render build and restart the app, which takes about 2 minutes.
+- **The free plan sleeps.** After 15 minutes with no visits, the first page load can take up to a minute while Render wakes the app. Open it a few minutes before a demo.
+- **Logs.** Render's **Logs** tab shows which database and AI are in use, and how long each AI call took (for example `AI ticket draft (gemini-…): 6.2 s`).
+- **Keys stay secret.** The keys live only in Render's environment variables. The browser never sees them.
 
 ---
 

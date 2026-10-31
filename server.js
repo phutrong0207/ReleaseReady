@@ -16,7 +16,7 @@ const path = require('path');
 
 const { createStore, CYCLE_FIELDS, okCycle } = require('./server/db');
 const ai = require('./server/ai');
-const { checkPrompt, draftPrompt } = require('./server/prompts');
+const { checkPrompt, draftPrompt, dupPrompt } = require('./server/prompts');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(__dirname, 'public');
@@ -81,6 +81,13 @@ async function api(req, res, url) {
       const ctl = new AbortController();
       res.on('close', () => { if (!res.writableEnded) ctl.abort(); });   // the browser left: stop asking Gemini
       try { return send(res, 200, await ai.askJSON(checkPrompt(b), 'check', ctl.signal)); }
+      catch (e) { return send(res, aiStatus(e), { code: e.name === 'AbortError' ? 'cancelled' : (e.code || 'upstream_error'), message: e.message }); }
+    }
+    if (req.method === 'POST' && url.pathname === '/api/dup-check') {
+      const b = await readBody(req, 300 * 1024);
+      const ctl = new AbortController();
+      res.on('close', () => { if (!res.writableEnded) ctl.abort(); });
+      try { return send(res, 200, await ai.askJSON(dupPrompt(b), 'draft', ctl.signal)); }
       catch (e) { return send(res, aiStatus(e), { code: e.name === 'AbortError' ? 'cancelled' : (e.code || 'upstream_error'), message: e.message }); }
     }
     if (req.method === 'POST' && url.pathname === '/api/draft-ticket') {

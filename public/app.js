@@ -70,14 +70,14 @@ function snapshot() {
   const pidOf = {}; Object.entries(S.ptk).forEach(([pid, key]) => pidOf[key] = pid);
   S.tickets.forEach(t => o.tickets[t.key] = { key: t.key, summary: t.summary, type: t.type, priority: t.priority, epic: t.epic, status: t.status, source: t.src, links: t.links || 0, reopened: !!t.reopened, problem_id: pidOf[t.key] || null, details: t.d || null, evidence: t.ev || null, position: t.seq || 0 });
   Object.entries(S.drafts).forEach(([pid, f]) => o.drafts[pid] = { problem_id: pid, fields: f });
-  const set = { appName: S.appName, completed: S.completed, nextKey: S.nextKey, seq: S.seq, npos: S.npos, sumSent: S.sumSent, ended: S.ended };
+  const set = { memG: S.memG || {}, gkNo: S.gkNo || {}, aiDup: S.aiDup && S.aiDup.at ? { sig: S.aiDup.sig, pairs: S.aiDup.pairs, known: S.aiDup.known, ids: S.aiDup.ids || [], at: S.aiDup.at } : null, appName: S.appName, completed: S.completed, nextKey: S.nextKey, seq: S.seq, npos: S.npos, sumSent: S.sumSent, ended: S.ended };
   Object.entries(set).forEach(([k, v]) => o.settings[k] = { key: k, value: v });
   return o;
 }
 function hydrate(tb) {
   const by = (rows, f) => (rows || []).slice().sort((a, b) => (a[f] || 0) - (b[f] || 0));
   const st = {}; (tb.settings || []).forEach(r => st[r.key] = r.value);
-  S.appName = st.appName || ''; S.completed = st.completed || {}; S.nextKey = st.nextKey || 1; S.seq = st.seq || 0; S.npos = st.npos || 0; S.sumSent = st.sumSent || {}; S.ended = st.ended || null;
+  S.memG = st.memG || {}; S.gkNo = st.gkNo || {}; S.aiDup = st.aiDup && st.aiDup.sig ? Object.assign({ status: 'done' }, st.aiDup) : null; S.appName = st.appName || ''; S.completed = st.completed || {}; S.nextKey = st.nextKey || 1; S.seq = st.seq || 0; S.npos = st.npos || 0; S.sumSent = st.sumSent || {}; S.ended = st.ended || null;
   S.testers = by(tb.testers, 'position').map(r => ({ name: r.name }));
   S.script = by(tb.steps, 'position').map(r => ({ step: r.id, scen: r.scenario, screen: r.screen || '', act: r.action, exp: r.expected, who: r.assigned || [] }));
   const msgs = {}; by(tb.messages, 'position').forEach(m => (msgs[m.feedback_id] = msgs[m.feedback_id] || []).push({ id: m.id, from: m.sender, text: m.body, at: m.sent_at, img: m.image || '' }));
@@ -453,24 +453,101 @@ function triage() {
   });
   // group comments that describe the same bug
   const n = rest.length, parent = rest.map((_, i) => i), find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
-  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (strong(pair(rest[i], rest[j]))) parent[find(i)] = find(j);
+  // The AI decides (meaning + step + screen) for every comment it has read. Rules are used only as a quick estimate for comments the AI
+  // has not read yet (or when the AI is off), and to keep groups the manager has already merged exactly as they were.
+  const ruled = c => !aiCovered(c.id), mg = S.memG || {};
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const a = rest[i], b = rest[j];
+    if (mg[a.id] && mg[a.id] === mg[b.id]) { parent[find(i)] = find(j); continue; }   // the manager grouped them: keep them together
+    if ((ruled(a) || ruled(b) || (S.mem[a.id] && S.mem[b.id] && !mg[a.id] && !mg[b.id])) && strong(pair(a, b))) parent[find(i)] = find(j); }
+  // AI matches: never change a group or comment the manager has already decided on
+  const idx = {}; rest.forEach((c, i) => idx[c.id] = i);
+  const decided = i => { const root = find(i), mem = rest.filter((_, j) => find(j) === root).sort((a, b) => a.seq - b.seq); return S.groups[mem[0].id] !== undefined || mem.some(c => S.appr[c.id] || S.known[c.id] || S.mem[c.id]); };
+  const membersOf = i => { const root = find(i); return rest.filter((_, j) => find(j) === root); };
+  aiPairs().forEach(p => { const i = idx[p.a], j = idx[p.b]; if (i === undefined || j === undefined || find(i) === find(j)) return;
+    const di = decided(i), dj = decided(j); if (di && dj) return;
+    if (di || dj) { const u = di ? j : i, d = di ? i : j, um = membersOf(u);   // a new comment may join a decided group, shown as "New"; the group itself is not changed
+      if (um.length > 1 || um[0].seq < Math.min(...membersOf(d).map(c => c.seq))) return; }
+    parent[find(i)] = find(j); });
   const comps = {}; rest.forEach((c, i) => (comps[find(i)] = comps[find(i)] || []).push(c));
   const groups = [], singles = [];
   Object.values(comps).forEach(list => { if (list.length > 1) groups.push({ anchor: list[0].id, members: list.slice() }); else singles.push(list[0]); });
   // a weak match is shown in the group but starts unticked
   const leftovers = [];
   singles.forEach(c => {
+    if (!ruled(c)) { leftovers.push(c); return; }   // the AI read it and found no match
     let best = null;
     groups.forEach(g => g.members.forEach(m => { const p = pair(c, m); if (p.score >= 40 && p.sim >= 0.2 && (!best || p.score > best.p.score)) best = { g, p }; }));
     if (best && S.groups[best.g.anchor] !== false) best.g.members.push(c); else leftovers.push(c);
   });
   groups.forEach(g => { g.members.sort((a, b) => a.seq - b.seq); g.members.forEach(c => c.cl = { type: 'dup', g: g.anchor }); });
   const bugs = [];
-  leftovers.forEach(c => { const m = knownMatch(c); if (m) { c.cl = knownInfo(c, m.t.key, m); known.push(c); } else { c.cl = { type: 'bug' }; bugs.push(c); } });
+  leftovers.forEach(c => { const m = ruled(c) && knownMatch(c), ak = !m && aiKnown(c); if (m) { c.cl = knownInfo(c, m.t.key, m); known.push(c); } else if (ak) { c.cl = ak; known.push(c); } else { c.cl = { type: 'bug' }; bugs.push(c); } });
   TRI = { cs, groups, known, ideas, bugs, dups: groups.flatMap(g => g.members) };
   return TRI;
 }
-function memberScore(c, g) { let best = null; g.members.forEach(o => { if (o === c) return; const p = pair(c, o); if (!best || p.score > best.score) best = p; }); return best || { score: 0, sameStep: false, sameScreen: false, sim: 0, err: false }; }
+function memberScore(c, g) {
+  let best = null; g.members.forEach(o => { if (o === c) return; const p = pair(c, o); if (!best || p.score > best.score) best = p; });
+  best = Object.assign({}, best || { score: 0, sameStep: false, sameScreen: false, sim: 0, err: false });
+  const ai = aiPairs().filter(p => (p.a === c.id || p.b === c.id) && g.members.some(o => o !== c && (o.id === p.a || o.id === p.b))).sort((a, b) => b.conf - a.conf)[0];
+  if (ai) { best.ai = ai; if (aiCovered(c.id) || ai.conf > best.score) { best.score = ai.conf; best.byAi = true; } }
+  return best;
+}
+// ---------- AI second opinion for the duplicate finder ----------
+const aiPairs = () => (S.aiDup && S.aiDup.pairs) || [];
+// A whole duplicate group can be the same problem as a ticket that already exists: check every member (the AI where it has read them, else the quick rules).
+function groupKnown(g, members) {
+  let best = null;
+  (members || g.members).forEach(c => { if (S.known[c.id]) return;
+    const a = aiCovered(c.id) ? aiKnown(c) : (m => m ? knownInfo(c, m.t.key, m) : null)(knownMatch(c));
+    if (a && a.type === 'known' && (!best || a.conf > best.conf)) best = Object.assign({}, a, { by: c }); });
+  if (!best || (S.gkNo || {})[g.anchor] === best.jira) return null;
+  return best;
+}
+const groupKnownHTML = (g, members) => { const k = groupKnown(g, members); if (!k) return '';
+  const t = S.tickets.find(x => x.key === k.jira) || { summary: '', status: '' }, n = members.length;
+  return `<div class="ask known-ask"><div class="row"><span class="chip c-known">Already known?</span><b>These ${n} comments look like existing ticket ${esc(k.jira)}: "${esc(t.summary)}" (${t.reopened ? 'reopened' : esc(t.status)})</b></div>${conf(k.conf, `Matches ${k.jira}`)}
+  <div class="why">${k.why.map(w => `<div class="sig">${mark(w[1])}<span>${esc(w[0])}</span></div>`).join('')}</div>
+  <div class="row"><button class="btn sm go" data-a="gKnown" data-g="${esc(g.anchor)}" data-t="${esc(k.jira)}" data-v="link">${k.closed ? `Link all ${n} and reopen ${esc(k.jira)}` : `Link all ${n} to ${esc(k.jira)}`}</button><button class="btn sm" data-a="gKnown" data-g="${esc(g.anchor)}" data-t="${esc(k.jira)}" data-v="new">Not the same, keep it as a new problem</button></div>
+  <span class="small muted">Linking adds them to ${esc(k.jira)} instead of making a second ticket. Each tester gets a message.</span></div>`; };
+const aiCovered = id => !!(aiReady() && S.aiDup && Array.isArray(S.aiDup.ids) && S.aiDup.ids.includes(id));   // the AI has read this comment
+function aiKnown(c) {
+  const k = ((S.aiDup && S.aiDup.known) || []).filter(x => x.c === c.id).sort((a, b) => b.conf - a.conf)[0]; if (!k) return null;
+  const t = S.tickets.find(x => x.key === k.key); if (!t || (t.seq || 0) >= (c.seq || 0) || (t.ev || []).some(e => e.id === c.id)) return null;
+  const open = t.status !== 'Done' || t.reopened;
+  return { type: 'known', jira: t.key, conf: Math.min(95, k.conf), closed: !open, ai: k.reason, why: [[`AI read the meaning: ${k.reason}`, true], [`Same area (${t.epic || 'not set'})`, t.epic === step(c.step).scen], [open ? `${t.key} is still open (${t.reopened ? 'reopened' : t.status})` : `${t.key} is Done, so this may be the same problem coming back (a regression)`, open ? true : null]] };
+}
+const aiBugComments = () => comments().filter(c => c.cat !== 'nonbug' && !c.thin);
+function aiDupSig() { return JSON.stringify([aiBugComments().map(c => [c.id, c.text]), S.tickets.map(t => [t.key, t.summary])]); }
+// Run when the manager opens Bugs and comments and the comments or tickets changed since the last check.
+async function runAiDup(force) {
+  if (!aiReady() || S.boot !== 'ready' || S.role !== 'manager') return;
+  const cs = aiBugComments(); if (cs.length < 2 && !S.tickets.length) return;
+  const sig = aiDupSig(); if (S.aiDup && S.aiDup.status === 'checking') return; if (!force && S.aiDup && S.aiDup.sig === sig && Array.isArray(S.aiDup.ids)) return;   // a failed check is retried only with the button
+  const prev = S.aiDup; S.aiDup = Object.assign({}, prev || { pairs: [], known: [] }, { status: 'checking', sig }); safeRender();
+  const tks = S.tickets.map(t => ({ key: t.key, status: t.status, summary: t.summary, actual: (t.d && t.d.actual) || '' }));
+  try {
+    const j = await api('/api/dup-check', { app: appName(), comments: cs.map(c => { const st = step(c.step); return { tester: c.tester, r: c.r, text: c.text, step: { scen: st.scen, step: st.step, screen: st.screen, act: st.act, exp: st.exp } }; }), tickets: tks });
+    const cid = x => { const m = /^C(\d+)$/.exec(String(x || '').trim()); return m && cs[+m[1] - 1] ? cs[+m[1] - 1].id : null; };
+    const tid = x => { const m = /^T(\d+)$/.exec(String(x || '').trim()); return m && tks[+m[1] - 1] ? tks[+m[1] - 1].key : null; };
+    const num = v => Math.max(0, Math.min(100, Math.round(+v || 0)));
+    const pairs = (Array.isArray(j.pairs) ? j.pairs : []).map(p => ({ a: cid(p.a), b: cid(p.b), conf: num(p.confidence), reason: String(p.reason || '').slice(0, 200) })).filter(p => p.a && p.b && p.a !== p.b && p.conf >= 50);
+    const known = (Array.isArray(j.known) ? j.known : []).map(k => ({ c: cid(k.c), key: tid(k.ticket), conf: num(k.confidence), reason: String(k.reason || '').slice(0, 200) })).filter(k => k.c && k.key && k.conf >= 50);
+    S.aiDup = { status: 'done', sig, pairs, known, ids: cs.map(c => c.id), at: stamp() };
+    cs.forEach(c => { if (!(S.selTouched || {})[c.id] && !S.mem[c.id]) delete S.sel[c.id]; });   // ticks follow the AI's answer unless the manager changed them
+  } catch (e) {
+    S.aiDup = Object.assign({}, prev || { pairs: [], known: [] }, { status: 'error', sig, err: aiErrorText(e) });
+  }
+  TRI = null; schedulePersist(); safeRender();
+}
+function aiDupBar() {
+  if (!aiReady()) return '<span class="small muted">AI is off, so duplicates and already-known comments are found by quick rules (same step, screen and wording).</span>';
+  const a = S.aiDup, unread = aiBugComments().filter(c => !aiCovered(c.id)).length;
+  if (a && a.status === 'checking') return `<div class="row"><span class="chip c-new">AI is reading the comments…</span><span class="small muted">It compares what each comment means, and its step and screen.${unread ? ' Until it answers, quick rule estimates are shown.' : ''}</span></div>`;
+  if (a && a.status === 'error') return `<div class="row"><span class="small q">The AI could not check duplicates just now (${esc(a.err || 'no answer')}). Quick rule estimates are shown instead.</span><button class="btn sm" data-a="aiDupRetry">Try again</button></div>`;
+  if (!a || !a.at) return '';
+  const n = a.pairs.length + a.known.length;
+  return `<div class="row"><span class="chip c-idea">Checked by AI</span><span class="small muted">The AI compared ${a.ids ? a.ids.length : 0} comments by meaning, step and screen${S.tickets.length ? ', and against existing tickets' : ''}: ${n ? `${n} match${n > 1 ? 'es' : ''}, each with its confidence and reason` : 'no matches'}. You decide each one.${unread ? ` ${unread} new comment${unread > 1 ? 's' : ''} not checked yet.` : ''}</span><button class="btn link small" data-a="aiDupRetry">Check again</button></div>`;
+}
 function lvl(v) { return v >= 85 ? ['h', 'High'] : v >= 60 ? ['m', 'Medium'] : ['l', 'Low']; }
 const conf = (v, label) => { const [k, n] = lvl(v); return `<div class="conf"><span class="small" style="font-weight:600">${esc(label)}</span><div class="bar lvl-${k}"><i style="width:${v}%"></i></div><span class="mono" style="font-weight:600">${v}%</span><span class="small muted">${n} confidence</span></div>`; };
 // Comments that would become a problem on their own wait in Bugs and comments until the manager approves them.
@@ -940,9 +1017,10 @@ function v3() {
       g.members.filter(c => S.mem[c.id] === 'out').forEach(c => sepCard(c, g, 'Not ticked when you merged, so it is a separate comment.'));
       if (!ins.length) return;
       const d = S.appr[gk], row = c => `<div class="member" id="cm3-${esc(c.id)}"><span class="chip c-ok">Merged</span><div class="stack" style="gap:3px"><div class="row"><b>${esc(c.tester)}</b>${c.thin ? '<span class="chip c-thin">Needs more detail</span>' : ''}${c.edited ? '<span class="chip c-grey">Edited</span>' : ''}</div><span class="quote">"${esc(c.text)}"</span>${stepUnder(c)}${shotOf(c)}${S.sent[c.id] || S.pending[c.id] ? told(c) : ''}</div></div>`;
-      const late = c => `<div class="member" id="cm3-${esc(c.id)}"><span class="chip c-new">New</span><div class="stack" style="gap:3px"><div class="row"><b>${esc(c.tester)}</b>${c.thin ? '<span class="chip c-thin">Needs more detail</span>' : ''}</div><span class="quote">"${esc(c.text)}"</span>${stepUnder(c)}${shotOf(c)}<div class="row"><span class="small q">Arrived after you merged and looks like the same problem.</span><button class="btn sm go" data-a="memIn" data-g="${esc(g.anchor)}" data-k="${esc(c.id)}">Add to the merged comment</button><button class="btn sm" data-a="memOut" data-g="${esc(g.anchor)}" data-k="${esc(c.id)}">Keep it separate</button></div></div></div>`;
+      const late = c => `<div class="member" id="cm3-${esc(c.id)}"><span class="chip c-new">New</span><div class="stack" style="gap:3px"><div class="row"><b>${esc(c.tester)}</b>${c.thin ? '<span class="chip c-thin">Needs more detail</span>' : ''}</div><span class="quote">"${esc(c.text)}"</span>${stepUnder(c)}${shotOf(c)}${(p => p.ai ? `<div class="aiwhy small"><span class="chip c-idea">AI ${p.ai.conf}%</span> ${esc(p.ai.reason)}</div>` : '')(memberScore(c, g))}<div class="row"><span class="small q">Arrived after you merged and looks like the same problem${memberScore(c, g).byAi ? ' (matched by meaning, not wording)' : ''}.</span><button class="btn sm go" data-a="memIn" data-g="${esc(g.anchor)}" data-k="${esc(c.id)}">Add to the merged comment</button><button class="btn sm" data-a="memOut" data-g="${esc(g.anchor)}" data-k="${esc(c.id)}">Keep it separate</button></div></div></div>`;
       pt = 'dup'; pw = !d || news.length > 0;
       place(st0.scen, `<div class="box ${!d ? 'hl' : ''}"><div class="row between"><div class="row"><span class="chip c-bug">Merged comment · ${ins.length}</span><h3>${ins.length > 1 ? `${ins.length} testers reported the same problem` : 'One comment'}${st0.screen ? ' on ' + esc(st0.screen) : ''}</h3></div><button class="btn link small" data-a="undoMerge" data-g="${esc(g.anchor)}">Undo merge</button></div>
+      ${!d ? groupKnownHTML(g, ins) : ''}
       <div>${ins.map(row).join('')}${news.map(late).join('')}</div>
       ${ins.length > 1 ? `<div class="stack" style="gap:4px"><span class="small muted">The merged comments share one group chat: you and ${esc(chatPeople(chatGroup(ins[0].id)).join(', '))}. Everyone sees every message.</span>${threadHTML(ins[0].id, 'manager')}</div>` : threadHTML(ins[0].id, 'manager')}
       ${!d ? `<div class="row"><button class="btn go" data-a="approve" data-k="${esc(gk)}" data-v="yes">Approve as one problem</button><button class="btn" data-a="approve" data-k="${esc(gk)}" data-v="no">Don't approve</button><span class="small muted">Approved, it moves to Unique problems as one problem.</span></div>`
@@ -951,19 +1029,30 @@ function v3() {
       return;
     }
     const mrow = c => { const p = memberScore(c, g), v = p.score, [l] = lvl(v);
-      return `<div class="member" id="cm3-${esc(c.id)}"><input type="checkbox" id="sel-${esc(c.id)}" data-a="sel" data-k="${esc(c.id)}" ${S.sel[c.id] ? 'checked' : ''} aria-label="Include ${esc(c.tester)}'s comment in the merge"><div class="stack" style="gap:3px"><div class="row"><b>${esc(c.tester)}</b>${c.thin ? '<span class="chip c-thin">Needs more detail</span>' : ''}${c.edited ? '<span class="chip c-grey">Edited</span>' : ''}${S.sel[c.id] ? '' : '<span class="chip c-grey">Not ticked: stays a separate comment</span>'}</div><span class="quote">"${esc(c.text)}"</span>${stepUnder(c)}${shotOf(c)}
-      <div class="row small muted"><span>${mark(p.sameStep)} same step</span><span>${mark(p.sameScreen)} same screen</span><span>${mark(p.sim >= 0.5 ? true : p.sim >= 0.3 ? null : false)} wording ${Math.round(p.sim * 100)}% alike</span><span>${mark(errSeen(c))} error or screenshot</span></div>
+      return `<div class="member" id="cm3-${esc(c.id)}"><input type="checkbox" id="sel-${esc(c.id)}" data-a="sel" data-k="${esc(c.id)}" ${S.sel[c.id] ? 'checked' : ''} aria-label="Include ${esc(c.tester)}'s comment in the merge"><div class="stack" style="gap:3px"><div class="row"><b>${esc(c.tester)}</b>${c.thin ? '<span class="chip c-thin">Needs more detail</span>' : ''}${c.edited ? '<span class="chip c-grey">Edited</span>' : ''}${S.sel[c.id] ? '' : '<span class="chip c-grey">Not ticked: stays a separate comment</span>'}${aiReady() && !aiCovered(c.id) && !p.byAi ? '<span class="chip c-grey">Quick estimate · AI not checked yet</span>' : ''}</div><span class="quote">"${esc(c.text)}"</span>${stepUnder(c)}${shotOf(c)}
+      ${p.ai ? `<div class="aiwhy small"><span class="chip c-idea">AI ${p.ai.conf}%</span> ${esc(p.ai.reason)}</div>` : ''}<div class="row small muted"><span>${mark(p.sameStep)} same step</span><span>${mark(p.sameScreen)} same screen</span><span>${mark(p.sim >= 0.5 ? true : p.sim >= 0.3 ? null : false)} wording ${Math.round(p.sim * 100)}% alike</span><span>${mark(errSeen(c))} error or screenshot</span></div>
       ${S.sent[c.id] || S.pending[c.id] ? told(c) : ''}${threadHTML(c.id, 'manager')}</div>
       <span class="mono" style="font-weight:600;color:var(--${l === 'h' ? 'ok' : l === 'm' ? 'warn' : 'bad'})">${v}%</span></div>`; };
     const n = g.members.filter(c => S.sel[c.id]).length;
     pt = 'dup'; pw = true;
     place(st0.scen, `<div class="box hl"><div class="row"><span class="chip c-bug">Possible duplicates</span><h3>${g.members.length} comments may be the same bug${st0.screen ? ' on ' + esc(st0.screen) : ''}</h3></div>${conf(avg, 'Duplicate match')}
-    <div class="why"><b>Why grouped</b><span>Score for each comment, against its closest match = same step (35) + same screen (20) + wording alike (up to 30) + both show an error or screenshot (15).</span>${scores.some(s => s < 60) ? '<span class="q"><b>Not sure about one comment.</b> Its score is low, so it starts unticked. Tick it if you think it is the same bug.</span>' : ''}</div>
+    <div class="why"><b>Why grouped</b><span>${g.members.some(c => memberScore(c, g).byAi) ? 'The <b>AI</b> compared what each comment means, together with its step and screen. Its confidence is the score, and its reason is shown under each comment. The ✓ and ✗ facts are checked exactly by the app.' : 'Quick rule estimate (the AI has not read these yet, or is off): same step (35) + same screen (20) + wording alike (up to 30) + both show an error or screenshot (15).'}</span>${scores.some(s => s < 60) ? '<span class="q"><b>Not sure about one comment.</b> Its score is low, so it starts unticked. Tick it if you think it is the same bug.</span>' : ''}</div>
+    ${groupKnownHTML(g, g.members)}
     <div>${g.members.map(mrow).join('')}</div>
     ${confirmHTML(q => q.a === 'merge' && q.data.g === g.anchor)}
     <div class="row"><button class="btn go" data-a="merge" data-g="${esc(g.anchor)}" ${n ? '' : 'disabled'}>Merge ${n} ticked comment${n !== 1 ? 's' : ''} into one</button><button class="btn" data-a="noMerge" data-g="${esc(g.anchor)}">Don't merge</button></div><span class="small muted">Merging makes one comment here in Bugs and comments. You then approve it. Unticked comments become separate comments.</span></div>`);
   });
-  T.known.forEach(c => { const cl = c.cl, d = S.known[c.id], t = S.tickets.find(x => x.key === cl.jira) || { summary: '', status: '' };
+  // Comments linked to the same ticket from one merged group show as ONE merged "Already known" comment
+  const kGroups = {}, kSingles = [];
+  T.known.forEach(c => { const a = (S.memG || {})[c.id], key = S.knownT[c.id]; if (a && S.known[c.id] === 'link' && key) (kGroups[a + '|' + key] = kGroups[a + '|' + key] || { a, key, members: [] }).members.push(c); else kSingles.push(c); });
+  Object.values(kGroups).forEach(kg => { if (kg.members.length < 2) { kSingles.push(...kg.members); return; }
+    const t = S.tickets.find(x => x.key === kg.key) || { summary: '', status: '' }, ms = kg.members.sort((a, b) => a.seq - b.seq);
+    pt = 'known'; pw = false;
+    place(step(ms[0].step).scen, `<div class="box"><div class="row between"><div class="row"><span class="chip c-known">Already known · merged · ${ms.length}</span><h3>${ms.length} testers reported this known problem, linked to ${esc(kg.key)}</h3></div></div>
+    <div class="why"><b>Existing ticket ${esc(kg.key)}: "${esc(t.summary)}" (${t.reopened ? 'reopened' : esc(t.status)})</b><span>Linked as one comment, so no second ticket was made. The ticket now counts these reports.</span></div>
+    <div>${ms.map(c => `<div class="member"><span class="chip c-ok">Linked</span><div class="stack" style="gap:3px"><b>${esc(c.tester)}</b><span class="quote">"${esc(c.text)}"</span>${stepUnder(c)}${shotOf(c)}${told(c)}</div></div>`).join('')}</div>
+    <div class="row"><span class="toast">Linked to ${esc(kg.key)}. Not counted as a unique problem.</span><button class="btn link small" data-a="gKnownUndo" data-g="${esc(kg.a)}" data-t="${esc(kg.key)}">${undoLabel(ms.map(c => c.id))}</button></div>${threadHTML(ms[0].id, 'manager')}</div>`); });
+  kSingles.forEach(c => { const cl = c.cl, d = S.known[c.id], t = S.tickets.find(x => x.key === cl.jira) || { summary: '', status: '' };
     pt = 'known'; pw = !d;
     place(step(c.step).scen, `<div class="box ${!d ? 'hl' : ''}">${quoteHead(c, '<span class="chip c-known">Already known</span>')}${conf(cl.conf, `Matches ${cl.jira}`)}<div class="why"><b>Compared with existing ticket ${esc(cl.jira)}: "${esc(t.summary)}" (${t.reopened ? 'reopened' : esc(t.status)})</b>${cl.why.map(w => `<div class="sig">${mark(w[1])}<span>${esc(w[0])}</span></div>`).join('')}</div>
     ${!d ? `<div class="row"><button class="btn go" data-a="known" data-k="${esc(c.id)}" data-t="${esc(cl.jira)}" data-v="link">${cl.closed ? `Link and reopen ${esc(cl.jira)}` : `Link to ${esc(cl.jira)}`}</button><button class="btn" data-a="known" data-k="${esc(c.id)}" data-t="${esc(cl.jira)}" data-v="new">Not the same, approve as a new problem</button></div>${confirmHTML(q => q.data.k === c.id)}` : `<div class="row"><span class="toast">${d === 'link' ? `Linked to ${esc(cl.jira)}. Not counted as a unique problem.` : 'Kept as a new problem.'}</span><button class="btn link small" data-a="known" data-k="${esc(c.id)}" data-t="${esc(cl.jira)}" data-v="">${undoLabel([c.id])}</button></div>`}${told(c)}${threadHTML(c.id, 'manager')}</div>`); });
@@ -973,15 +1062,23 @@ function v3() {
     ${!d ? `<div class="row"><button class="btn go" data-a="idea" data-k="${esc(c.id)}" data-v="add">Add to Good ideas</button><button class="btn" data-a="idea" data-k="${esc(c.id)}" data-v="no">Not for now</button><button class="btn" data-a="idea" data-k="${esc(c.id)}" data-v="bug">It's actually a bug</button></div>${confirmHTML(q => q.data.k === c.id)}` : `<div class="row"><span class="toast">${d === 'add' ? 'Added to Good ideas in Section 4.' : d === 'no' ? 'Checked. Not added to Good ideas.' : 'Treated as a bug.'}</span><button class="btn link small" data-a="idea" data-k="${esc(c.id)}" data-v="">${undoLabel([c.id])}</button></div>`}${told(c)}${threadHTML(c.id, 'manager')}</div>`); });
   T.bugs.forEach(c => (pt = 'bug', pw = !S.appr[c.id], place(step(c.step).scen, `<div class="box ${!S.appr[c.id] ? 'hl' : ''}">${quoteHead(c, '<span class="chip c-new">Unique</span>')}<div class="why"><div class="sig">${mark(false)}<span>No duplicate among other comments, and no matching ticket</span></div></div>${apprRow(c)}${confirmHTML(q => q.data.k === c.id)}${told(c)}${threadHTML(c.id, 'manager')}</div>`)));
   const scenOrder = [...new Set([...S.script.map(s => s.scen), ...Object.keys(byScen)])].filter(s => byScen[s]);
-  const F = S.f3, show = x => F === 'all' || (F === 'wait' ? x.wait : x.type === F);
+  const B = S.f3b || 'all', F = ['dup', 'known', 'idea', 'bug'].includes(S.f3) ? S.f3 : 'all';
+  const inBig = (x, b) => b === 'all' || (b === 'wait' ? x.wait : !x.wait), show = x => inBig(x, B) && (F === 'all' || x.type === F);
+  const allCards = Object.values(byScen).flat();
   const scen = scenOrder.map(s => { const cards = byScen[s].filter(show); if (!cards.length) return '';
     const list = T.cs.filter(c => step(c.step).scen === s), fails = new Set(list.filter(c => c.r === 'fail').map(c => c.tester + c.step)).size, hid = !!S.hide3[s], wait = cards.filter(x => x.wait).length;
-    return `<div class="scen"><button class="scenhead scentog" data-a="tog3" data-v="${esc(s)}" aria-expanded="${!hid}"><span class="chev">${hid ? '▸' : '▾'}</span><h3>${esc(s)}</h3><span class="small muted">${fails} failed step${fails !== 1 ? 's' : ''} · ${list.length} comment${list.length !== 1 ? 's' : ''}${F !== 'all' ? ` · ${cards.length} shown` : ''}</span>${wait ? `<span class="chip c-bug">${wait} to decide</span>` : ''}<span class="small muted togtxt">${hid ? 'Show comments' : 'Hide comments'}</span></button>${hid ? '' : cards.map(x => x.html).join('')}</div>`; }).join('')
-    || `<div class="empty small">Nothing here for this filter. <button class="btn link small" data-a="f3" data-v="all">Show all comments</button></div>`;
+    return `<div class="scen"><button class="scenhead scentog" data-a="tog3" data-v="${esc(s)}" aria-expanded="${!hid}"><span class="chev">${hid ? '▸' : '▾'}</span><h3>${esc(s)}</h3><span class="small muted">${fails} failed step${fails !== 1 ? 's' : ''} · ${list.length} comment${list.length !== 1 ? 's' : ''}${F !== 'all' || B !== 'all' ? ` · ${cards.length} shown` : ''}</span>${wait ? `<span class="chip c-bug">${wait} to decide</span>` : ''}<span class="small muted togtxt">${hid ? 'Show comments' : 'Hide comments'}</span></button>${hid ? '' : cards.map(x => x.html).join('')}</div>`; }).join('')
+    || `<div class="empty small">Nothing here for this filter. <button class="btn link small" data-a="f3reset">Show all comments</button></div>`;
+  const BIG = [['all', 'All comments'], ['wait', 'Need your decision'], ['done', 'Resolved']], SMALL = [['dup', 'Possible duplicates'], ['known', 'Already known'], ['idea', 'Good ideas'], ['bug', 'Unique']];
+  const filters = `<div class="bigtabs" role="tablist" aria-label="Show comments by status">${BIG.map(([v, l]) => { const n = allCards.filter(x => inBig(x, v)).length;
+      return `<button role="tab" class="bigtab ${v}" data-a="f3b" data-v="${v}" aria-selected="${B === v}">${l}<span class="bigcount">${n}</span></button>`; }).join('')}</div>
+    <div class="subchips" role="group" aria-label="Show one kind of comment"><span class="small muted">Show:</span>${[['all', 'Every kind']].concat(SMALL).map(([v, l]) => { const n = allCards.filter(x => inBig(x, B) && (v === 'all' || x.type === v)).length;
+      return `<button class="subchip ${v}" data-a="f3" data-v="${v}" aria-pressed="${F === v}">${l} <b>${n}</b></button>`; }).join('')}</div>`;
   const pend = pendingTriage();
   return `<section class="panel"><div class="phead"><div><span class="eyebrow">Section 3 · duplicate finder</span><h2>Bugs and comments</h2><p class="muted">Every bug and non-bug comment waits here until you decide. The duplicate finder groups the same bug, checks each comment against tickets already made in this test cycle, and flags good ideas. Only approved comments move on to Unique problems and Good ideas. The tester gets a kind message either way.</p></div></div>
-  <div class="stats" role="group" aria-label="Show comments by type">${[['all', T.cs.length, 'all comments'], ['dup', T.dups.length, 'possible duplicates'], ['known', T.known.length, 'already known'], ['idea', T.ideas.length, 'good ideas'], ['bug', T.bugs.length, 'unique'], ['wait', pend, 'need your decision']].map(([v, n, l]) => `<button class="stat statbtn" data-a="f3" data-v="${v}" aria-pressed="${S.f3 === v}"><b>${n}</b><span>${l}</span></button>`).join('')}</div>
-  <div class="row between"><span class="small muted">${S.f3 === 'all' ? 'Click a box to show only that kind of comment.' : 'Showing only one kind. Click the box again, or "all comments", to show everything.'}</span><span class="row"><button class="btn link small" data-a="togAll" data-v="hide">Hide all comments</button><button class="btn link small" data-a="togAll" data-v="show">Show all comments</button></span></div>
+  ${aiDupBar()}
+  ${filters}
+  <div class="row between"><span class="small muted">Cards are counted once: a merged comment is one card. ${B === 'all' && F === 'all' ? 'Pick a status above, then a kind, to narrow the list.' : `<button class="btn link small" data-a="f3reset">Show everything</button>`}</span><span class="row"><button class="btn link small" data-a="togAll" data-v="hide">Hide all comments</button><button class="btn link small" data-a="togAll" data-v="show">Show all comments</button></span></div>
   <div class="stack lg">${scen}</div>
   <div class="row between"><p class="note">${pend ? `${pend} decision${pend > 1 ? 's' : ''} left. Only approved comments move to Section 4.` : 'All decided.'}</p><button class="btn primary" data-a="sec" data-v="4">Go to unique problems →</button></div></section>`;
 }
@@ -1103,6 +1200,7 @@ function render() {
   const pm = document.getElementById('pmsgs'); if (pm) pm.scrollTop = pm.scrollHeight;
   if (hadFocus && !S.focusInput) S.focusInput = 'pn-input';
   if (S.boot === 'ready' && S.role === 'manager' && S.sec === 4) renderCheck();
+  if (S.boot === 'ready' && S.role === 'manager' && S.sec === 3 && aiReady()) setTimeout(() => runAiDup(false), 0);
   if (S.focusInput) { const el = document.getElementById(S.focusInput); S.focusInput = null; if (el) { el.focus({ preventScroll: true }); if (el.id !== 'pn-input') el.scrollIntoView({ block: 'center' }); if (el.setSelectionRange) el.setSelectionRange(el.value.length, el.value.length); } }
   if (S.focus) { const el = document.getElementById('cm-' + S.focus) || document.getElementById('cm3-' + S.focus); S.focus = null; if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); } }
   schedulePersist();
@@ -1182,6 +1280,7 @@ const A = {
   setR: e => { S.ui[e.dataset.k].r = e.dataset.v; },
   saveAnyway: e => { const kind = e.dataset.f, k = e.dataset.k; if (!(kind === 'p' ? S.ui[k] : kind === 'e' ? S.ue[k] : S.ux[k])) return; commit(kind, k, thinFor(kind, k)); },
   keepSave: e => { const kind = e.dataset.f, k = e.dataset.k; if (!(kind === 'p' ? S.ui[k] : kind === 'e' ? S.ue[k] : S.ux[k])) return; commit(kind, k, thinFor(kind, k)); },
+  aiDupRetry: () => { runAiDup(true); return 'keep'; },
   askDelC: e => { S.delAsk = e.dataset.k; },
   cancelDelC: () => { S.delAsk = null; },
   delC: e => { const ok = deleteItem(e.dataset.k); S.delAsk = null; toast(ok ? 'Comment deleted. The UAT manager has been told.' : 'This comment cannot be deleted.'); },
@@ -1203,12 +1302,20 @@ const A = {
     if (n.to === 'manager') { if (n.ref.tester) { S.sec = 2; S.mtester = n.ref.tester; S.focus = n.ref.cid || null; } }
     else { S.ttab = 'script'; S.focus = n.ref.cid || null; if (n.ref.cid) { const [t, s] = n.ref.cid.split('|'); S.openStep = t + '|' + s; } else if (n.ref.step && S.script.some(x => x.step === n.ref.step && x.who.includes(n.to))) S.openStep = n.to + '|' + n.ref.step; } },
   readAll: e => { S.notes.filter(n => n.to === e.dataset.v).forEach(n => n.read = true); },
-  merge: e => { const g = triage().groups.find(x => x.anchor === e.dataset.g); if (!g) return; S.groups[g.anchor] = true; g.members.forEach(c => S.mem[c.id] = S.sel[c.id] ? 'in' : 'out'); const ins = g.members.filter(c => S.mem[c.id] === 'in'); g.members.forEach(c => tell(c.id, S.mem[c.id] === 'in' ? withCredit(MSG.merged(c, ins.length), c, ins) : withCredit(MSG.separate(c), c))); toast('Merged into one comment. Approve it when you are ready. Unticked comments are now separate comments.'); },
+  merge: e => { const g = triage().groups.find(x => x.anchor === e.dataset.g); if (!g) return; S.groups[g.anchor] = true; S.memG = S.memG || {}; g.members.forEach(c => { S.memG[c.id] = g.anchor; }); g.members.forEach(c => S.mem[c.id] = S.sel[c.id] ? 'in' : 'out'); const ins = g.members.filter(c => S.mem[c.id] === 'in'); g.members.forEach(c => tell(c.id, S.mem[c.id] === 'in' ? withCredit(MSG.merged(c, ins.length), c, ins) : withCredit(MSG.separate(c), c))); toast('Merged into one comment. Approve it when you are ready. Unticked comments are now separate comments.'); },
   noMerge: e => { const g = triage().groups.find(x => x.anchor === e.dataset.g); if (!g) return; S.groups[g.anchor] = false; g.members.forEach(c => tell(c.id, withCredit(MSG.separate(c), c))); toast('Kept separate. Messages send in 10 s (Undo to stop)'); },
-  undoMerge: e => { const g = triage().groups.find(x => x.anchor === e.dataset.g); if (!g) return; const quiet = g.members.map(c => revoke(c.id)).every(Boolean); delete S.groups[g.anchor]; delete S.appr['g:' + g.anchor]; g.members.forEach(c => { delete S.mem[c.id]; delete S.appr[c.id]; }); delete S.drafts['g:' + g.anchor]; toast(quiet ? 'Undone. No message was sent.' : 'Decision reopened. A correction is sent when you decide again.'); },
-  memIn: e => { const T = triage(), g = T.groups.find(x => x.anchor === e.dataset.g), c = g && g.members.find(x => x.id === e.dataset.k); if (!c) return; S.mem[c.id] = 'in'; const n = g.members.filter(x => S.mem[x.id] === 'in').length, k = S.ptk['g:' + g.anchor];
+  undoMerge: e => { const g = triage().groups.find(x => x.anchor === e.dataset.g); if (!g) return; const quiet = g.members.map(c => revoke(c.id)).every(Boolean); delete S.groups[g.anchor]; delete S.appr['g:' + g.anchor]; g.members.forEach(c => { delete S.mem[c.id]; delete S.appr[c.id]; if (S.memG) delete S.memG[c.id]; }); delete S.drafts['g:' + g.anchor]; toast(quiet ? 'Undone. No message was sent.' : 'Decision reopened. A correction is sent when you decide again.'); },
+  memIn: e => { const T = triage(), g = T.groups.find(x => x.anchor === e.dataset.g), c = g && g.members.find(x => x.id === e.dataset.k); if (!c) return; S.mem[c.id] = 'in'; (S.memG = S.memG || {})[c.id] = g.anchor; const n = g.members.filter(x => S.mem[x.id] === 'in').length, k = S.ptk['g:' + g.anchor];
     if (k) { const t = S.tickets.find(t => t.key === k); if (t) { t.links++; t.ev = [...(t.ev || []), { id: c.id, tester: c.tester, step: c.step, text: c.text }]; } tell(c.id, withCredit(MSG.merged(c, n) + ' It is part of ticket ' + k + '.', c), true); } else tell(c.id, withCredit(MSG.merged(c, n), c), true); toast(c.tester + ' told'); },
-  memOut: e => { const g = triage().groups.find(x => x.anchor === e.dataset.g), c = g && g.members.find(x => x.id === e.dataset.k); if (!c) return; S.mem[c.id] = 'out'; tell(c.id, withCredit(MSG.separate(c), c), true); toast(c.tester + ' told'); },
+  memOut: e => { const g = triage().groups.find(x => x.anchor === e.dataset.g), c = g && g.members.find(x => x.id === e.dataset.k); if (!c) return; S.mem[c.id] = 'out'; (S.memG = S.memG || {})[c.id] = g.anchor; tell(c.id, withCredit(MSG.separate(c), c), true); toast(c.tester + ' told'); },
+  gKnownUndo: e => { const a = e.dataset.g, key = e.dataset.t; const ids = Object.keys(S.memG || {}).filter(id => S.memG[id] === a && S.known[id] && S.knownT[id] === key);
+    ids.forEach(id => A.known({ dataset: { k: id, v: '', t: key } })); toast('Link undone. The merged comment is back in Bugs and comments.'); },
+  gKnown: e => { const g = triage().groups.find(x => x.anchor === e.dataset.g), key = e.dataset.t; if (!g) return;
+    if (e.dataset.v === 'new') { S.gkNo = Object.assign({}, S.gkNo, { [g.anchor]: key }); toast('Kept as a new problem. You can merge and approve it as usual.'); return; }
+    const ms = S.groups[g.anchor] === true ? g.members.filter(c => S.mem[c.id] === 'in') : g.members;
+    S.groups[g.anchor] = true; S.memG = S.memG || {}; ms.forEach(c => { S.mem[c.id] = 'in'; S.memG[c.id] = g.anchor; });   // one merged comment, linked as a whole
+    ms.forEach(c => { if (!S.known[c.id]) A.known({ dataset: { k: c.id, v: 'link', t: key } }); });
+    toast(`Linked ${ms.length} comment${ms.length > 1 ? 's' : ''} to ${key}. Messages send in 10 s (click Undo to stop them).`); },
   known: e => { const k = e.dataset.k, v = e.dataset.v, key = e.dataset.t, c = comments().find(x => x.id === k), t = S.tickets.find(x => x.key === key); if (!c || !t) return;
     if (!v) { const quiet = revoke(k); toast(quiet ? 'Undone. No message was sent.' : 'Decision reopened. A correction is sent when you decide again.'); }
     if (S.known[k] === 'link') { t.links = Math.max(0, t.links - 1); if (t.reopened) { t.status = 'Done'; t.reopened = false; } }
@@ -1238,6 +1345,8 @@ const A = {
   askFirst: () => { const q = S.confirm; S.confirm = null; if (!q) return; S.panel = { t: 'thread', k: q.ids[0] }; S.focusInput = 'pn-input'; },
   cancelConfirm: () => { S.confirm = null; },
   f3: e => { S.f3 = S.f3 === e.dataset.v && e.dataset.v !== 'all' ? 'all' : e.dataset.v; },
+  f3b: e => { S.f3b = e.dataset.v; },
+  f3reset: () => { S.f3b = 'all'; S.f3 = 'all'; },
   tog3: e => { const v = e.dataset.v; if (S.hide3[v]) delete S.hide3[v]; else S.hide3[v] = true; },
   togAll: e => { if (e.dataset.v === 'show') S.hide3 = {}; else [...new Set([...S.script.map(x => x.scen), ...triage().cs.map(c => step(c.step).scen)])].forEach(v => { S.hide3[v] = true; }); },
   redraft: e => { const pid = e.dataset.p, P = problems(), p = [...P.bugs, ...P.ideas].find(x => x.pid === pid); delete S.drafts[pid]; aiDraft(p, true); },
@@ -1282,7 +1391,7 @@ function chatPost(pid, from, text, img) {
   toast(from === 'manager' ? 'Sent to ' + people.join(', ') : 'Sent to the chat');
 }
 // What can still be clicked in a completed test cycle: looking around, not changing anything.
-const VIEW_OK = new Set(['role', 'login', 'logout', 'homeNote', 'homeReadAll', 'togG', 'togUpd', 'togInbox', 'togMChats', 'ttab', 'sec', 'mtester', 'openStep', 'openPanel', 'closePanel', 'zoom', 'unzoom', 'tOpen', 'seeTicket', 'openNote', 'readAll', 'reopenCycle', 'goHome', 'openCycle', 'hideGuide', 'showGuide', 'f3', 'tog3', 'togAll', 'askReset', 'cancelReset', 'doReset', 'htab', 'cancelEnd', 'closeForm', 'retryBoot']);
+const VIEW_OK = new Set(['role', 'login', 'logout', 'homeNote', 'homeReadAll', 'togG', 'togUpd', 'togInbox', 'togMChats', 'aiDupRetry', 'ttab', 'sec', 'mtester', 'openStep', 'openPanel', 'closePanel', 'zoom', 'unzoom', 'tOpen', 'seeTicket', 'openNote', 'readAll', 'reopenCycle', 'goHome', 'openCycle', 'hideGuide', 'showGuide', 'f3', 'f3b', 'f3reset', 'tog3', 'togAll', 'askReset', 'cancelReset', 'doReset', 'htab', 'cancelEnd', 'closeForm', 'retryBoot']);
 const readOnlyNote = () => toast('This test cycle is completed. Click "Reopen test cycle" to change it.');
 document.addEventListener('click', async ev => {
   const el = ev.target.closest('[data-a]'); if (!el || ['SELECT', 'TEXTAREA', 'INPUT'].includes(el.tagName)) return;
@@ -1305,7 +1414,7 @@ document.addEventListener('focusout', () => { if (S.renderLater) setTimeout(() =
 document.addEventListener('change', async ev => {
   const el = ev.target, a = el.dataset.a;
   if (cycleDone() && ['tStatus', 'sel', 'shotFile', 'pimg', 'edit'].includes(a)) { readOnlyNote(); render(); return; }
-  if (a === 'sel') { S.sel[el.dataset.k] = el.checked; render(); }
+  if (a === 'sel') { S.sel[el.dataset.k] = el.checked; (S.selTouched = S.selTouched || {})[el.dataset.k] = true; render(); }
   if (a === 'suN') { const n = Math.max(1, Math.min(20, parseInt(el.value, 10) || 1)); S.setup.n = n; S.setup.names = Array.from({ length: n }, (_, i) => S.setup.names[i] || ''); render(); }
   if (a === 'pimg' && el.files && el.files[0]) { const k = el.dataset.k; try { S.panelImg[k] = await resizeImage(el.files[0], 900, 0.7); S.focusInput = 'pn-input'; } catch (e) { toast('That file could not be read as a picture.'); } render(); }
   if (a === 'shotFile' && el.files && el.files[0]) { try { S.ui[el.dataset.k].shot = await resizeImage(el.files[0]); } catch (e) { toast('That file could not be read as an image.'); } render(); }
