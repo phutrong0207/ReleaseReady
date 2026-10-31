@@ -516,7 +516,7 @@ function aiKnown(c) {
   const open = t.status !== 'Done' || t.reopened;
   return { type: 'known', jira: t.key, conf: Math.min(95, k.conf), closed: !open, ai: k.reason, why: [[`AI read the meaning: ${k.reason}`, true], [`Same area (${t.epic || 'not set'})`, t.epic === step(c.step).scen], [open ? `${t.key} is still open (${t.reopened ? 'reopened' : t.status})` : `${t.key} is Done, so this may be the same problem coming back (a regression)`, open ? true : null]] };
 }
-const aiBugComments = () => comments().filter(c => c.cat !== 'nonbug' && !c.thin);
+const aiBugComments = () => comments().filter(c => c.cat !== 'nonbug');
 function aiDupSig() { return JSON.stringify([aiBugComments().map(c => [c.id, c.text]), S.tickets.map(t => [t.key, t.summary])]); }
 // Run when the manager opens Bugs and comments and the comments or tickets changed since the last check.
 async function runAiDup(force) {
@@ -532,6 +532,11 @@ async function runAiDup(force) {
     const num = v => Math.max(0, Math.min(100, Math.round(+v || 0)));
     const pairs = (Array.isArray(j.pairs) ? j.pairs : []).map(p => ({ a: cid(p.a), b: cid(p.b), conf: num(p.confidence), reason: String(p.reason || '').slice(0, 200) })).filter(p => p.a && p.b && p.a !== p.b && p.conf >= 50);
     const known = (Array.isArray(j.known) ? j.known : []).map(k => ({ c: cid(k.c), key: tid(k.ticket), conf: num(k.confidence), reason: String(k.reason || '').slice(0, 200) })).filter(k => k.c && k.key && k.conf >= 50);
+    if (!force && prev && prev.at && Array.isArray(prev.ids)) {
+      const same = id => prev.ids.includes(id) && cs.some(c => c.id === id), key = p => [p.a, p.b].sort().join('~');
+      const have = new Set(pairs.map(key)); (prev.pairs || []).forEach(p => { if (same(p.a) && same(p.b) && !have.has(key(p))) pairs.push(p); });
+      const hk = new Set(known.map(k => k.c + '~' + k.key)); (prev.known || []).forEach(k => { if (same(k.c) && tks.some(t => t.key === k.key) && !hk.has(k.c + '~' + k.key)) known.push(k); });
+    }
     S.aiDup = { status: 'done', sig, pairs, known, ids: cs.map(c => c.id), at: stamp() };
     cs.forEach(c => { if (!(S.selTouched || {})[c.id] && !S.mem[c.id]) delete S.sel[c.id]; });   // ticks follow the AI's answer unless the manager changed them
   } catch (e) {
