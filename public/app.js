@@ -759,9 +759,9 @@ const GUIDE = {
   0: ['New feedback, replies and finished tests appear here.', 'Click a message to open the comment it is about.'],
   1: ['Add the steps testers will follow: scenario, screen, action and expected result.', 'Click names to assign testers to each step.', 'Testers then log in through the <b>Tester</b> interface.'],
   2: ['Pick a tester to see their results and comments.', 'Ask a question under any comment. The tester gets a notification.', 'When testing is over, click <b>End test cycle</b>. Every tester gets one thank-you summary of what their feedback achieved.'],
-  3: ['Go through every comment: duplicates, already known, good ideas and unique problems.', 'Read the % and the reasons, then decide. <b>Approve</b> sends a comment on to Unique problems.', 'Nothing moves on until you click. A comment marked "Needs more detail" asks you to confirm first.', 'The tester gets a kind message whether you approve it or not.'],
+  3: ['Go through every comment: duplicates, already known, good ideas and unique problems.', 'Read the % and the reasons, then decide. <b>Approve</b> sends a comment on to the Ticket Drafter.', 'Nothing moves on until you click. A comment marked "Needs more detail" asks you to confirm first.', 'The tester gets a kind message whether you approve it or not.'],
   4: ['Open the <b>chat</b> to ask the testers who reported a problem for more detail.', 'Click <b>Make a ticket</b>. The AI writes a draft from the comments and the chat.', 'Check every field and fix anything that is wrong.', 'When the clarity check is all ✓, click <b>Create ticket</b>.'],
-  5: ['Tickets made in Unique problems appear here.', 'Change a status when a developer starts or fixes something. The testers who reported it are told automatically.']
+  5: ['Tickets made in the Ticket Drafter appear here.', 'Change a status when a developer starts or fixes something. The testers who reported it are told automatically.']
 };
 function guide(id) {
   if (S.hideGuide[id]) return `<button class="btn link small guide-show" data-a="showGuide" data-v="${id}">Show help for this page</button>`;
@@ -993,7 +993,7 @@ function v2() {
 }
 const apprRow = c => { const d = S.appr[c.id];
   return !d ? `<div class="row"><button class="btn go" data-a="approve" data-k="${esc(c.id)}" data-v="yes">Approve as a problem</button><button class="btn" data-a="approve" data-k="${esc(c.id)}" data-v="no">Don't approve</button></div>`
-    : `<div class="row"><span class="toast">${d === 'yes' ? 'Approved. It is now in Unique problems.' : 'Not approved. It stays in the test record.'}</span><button class="btn link small" data-a="approve" data-k="${esc(c.id)}" data-v="">${undoLabel([c.id])}</button></div>`; };
+    : `<div class="row"><span class="toast">${d === 'yes' ? 'Approved. It is now in the Ticket Drafter.' : 'Not approved. It stays in the test record.'}</span><button class="btn link small" data-a="approve" data-k="${esc(c.id)}" data-v="">${undoLabel([c.id])}</button></div>`; };
 // Shown instead of approving when a comment is marked "Needs more detail".
 function confirmHTML(match) {
   const q = S.confirm; if (!q || !match(q)) return '';
@@ -1031,8 +1031,8 @@ function v3() {
       ${!d ? groupKnownHTML(g, ins) : ''}
       <div>${ins.map(row).join('')}${d ? '' : news.map(late).join('')}</div>
       ${ins.length > 1 ? `<div class="stack" style="gap:4px"><span class="small muted">The merged comments share one group chat: you and ${esc(chatPeople(chatGroup(ins[0].id)).join(', '))}. Everyone sees every message.</span>${threadHTML(ins[0].id, 'manager')}</div>` : threadHTML(ins[0].id, 'manager')}
-      ${!d ? `<div class="row"><button class="btn go" data-a="approve" data-k="${esc(gk)}" data-v="yes">Approve as one problem</button><button class="btn" data-a="approve" data-k="${esc(gk)}" data-v="no">Don't approve</button><span class="small muted">Approved, it moves to Unique problems as one problem.</span></div>`
-        : `<div class="row"><span class="toast">${d === 'yes' ? 'Approved. It is now one problem in Unique problems.' : 'Not approved. It stays in the test record.'}</span><button class="btn link small" data-a="approve" data-k="${esc(gk)}" data-v="">${undoLabel(ins.map(x => x.id))}</button></div>`}
+      ${!d ? `<div class="row"><button class="btn go" data-a="approve" data-k="${esc(gk)}" data-v="yes">Approve as one problem</button><button class="btn" data-a="approve" data-k="${esc(gk)}" data-v="no">Don't approve</button><span class="small muted">Approved, it moves to the Ticket Drafter as one problem.</span></div>`
+        : `<div class="row"><span class="toast">${d === 'yes' ? 'Approved. It is now one problem in the Ticket Drafter.' : 'Not approved. It stays in the test record.'}</span><button class="btn link small" data-a="approve" data-k="${esc(gk)}" data-v="">${undoLabel(ins.map(x => x.id))}</button></div>`}
       ${confirmHTML(q => q.data.k === gk)}</div>`);
       return;
     }
@@ -1083,12 +1083,12 @@ function v3() {
     <div class="subchips" role="group" aria-label="Show one kind of comment"><span class="small muted">Show:</span>${[['all', 'Every kind']].concat(SMALL).map(([v, l]) => { const n = allCards.filter(x => inBig(x, B) && (v === 'all' || x.type === v)).length;
       return `<button class="subchip ${v}" data-a="f3" data-v="${v}" aria-pressed="${F === v}">${l} <b>${n}</b></button>`; }).join('')}</div>`;
   const pend = pendingTriage();
-  return `<section class="panel"><div class="phead"><div><span class="eyebrow">Section 3 · duplicate finder</span><h2>Bugs and comments</h2><p class="muted">Every bug and non-bug comment waits here until you decide. The duplicate finder groups the same bug, checks each comment against tickets already made in this test cycle, and flags good ideas. Only approved comments move on to Unique problems and Good ideas. The tester gets a kind message either way.</p></div></div>
+  return `<section class="panel"><div class="phead"><div><span class="eyebrow">Section 3 · duplicate finder</span><h2>Bugs and comments</h2><p class="muted">Every bug and non-bug comment waits here until you decide. The duplicate finder groups the same bug, checks each comment against tickets already made in this test cycle, and flags good ideas. Only approved comments move on to the Ticket Drafter (unique problems and good ideas). The tester gets a kind message either way.</p></div></div>
   ${aiDupBar()}
   ${filters}
   <div class="row between"><span class="small muted">Cards are counted once: a merged comment is one card. ${B === 'all' && F === 'all' ? 'Pick a status above, then a kind, to narrow the list.' : `<button class="btn link small" data-a="f3reset">Show everything</button>`}</span><span class="row"><button class="btn link small" data-a="togAll" data-v="hide">Hide all comments</button><button class="btn link small" data-a="togAll" data-v="show">Show all comments</button></span></div>
   <div class="stack lg">${scen}</div>
-  <div class="row between"><p class="note">${pend ? `${pend} decision${pend > 1 ? 's' : ''} left. Only approved comments move to Section 4.` : 'All decided.'}</p><button class="btn primary" data-a="sec" data-v="4">Go to unique problems →</button></div></section>`;
+  <div class="row between"><p class="note">${pend ? `${pend} decision${pend > 1 ? 's' : ''} left. Only approved comments move to the Ticket Drafter.` : 'All decided.'}</p><button class="btn primary" data-a="sec" data-v="4">Go to the Ticket Drafter →</button></div></section>`;
 }
 function ticketForm(p) {
   const d = S.drafts[p.pid];
@@ -1146,6 +1146,15 @@ function panelHTML() {
   <div class="pcomp">${S.panelImg[key] ? `<div class="pimg">${shotHTML(S.panelImg[key], 'Photo to send')}<button class="btn link small" data-a="pimgClear" data-k="${esc(key)}">Remove</button></div>` : ''}<div class="row" style="align-items:flex-start;flex-wrap:nowrap"><textarea id="pn-input" rows="2" data-a="pdraft" data-k="${esc(key)}" aria-label="Message" placeholder="${esc(hint)}">${esc(S.panelDraft[key] || '')}</textarea><label class="iconbtn attach" title="Attach a photo" aria-label="Attach a photo">${I.img}<input type="file" accept="image/*" data-a="pimg" data-k="${esc(key)}"></label></div></div>
   <button class="btn primary psend" data-a="panelSend">Send message</button></aside>`;
 }
+// One list in the Ticket Drafter (unique problems or good ideas), split into "no ticket yet" and "ticket made".
+function tdGroup(id, title, chip, list, card, empty, note) {
+  const todo = list.filter(p => !S.ptk[p.pid]), done = list.filter(p => S.ptk[p.pid]), td = S.tdOpen || {};
+  const sub = (k, label, items, hint) => { const open = td[id + k] !== false;
+    return `<div class="tdsub"><button class="tdsubhead" data-a="tdTog" data-v="${id + k}" aria-expanded="${open}"><span class="chev">${open ? '▾' : '▸'}</span><span>${label}</span><span class="tdcount">${items.length}</span>${hint ? `<span class="small muted">${hint}</span>` : ''}</button>
+      ${open ? (items.map(card).join('') || `<div class="empty small">${k === 'todo' ? 'Nothing waiting for a ticket.' : 'No tickets made yet.'}</div>`) : ''}</div>`; };
+  return `<div class="tdgroup"><div class="tdtitle"><span class="chip ${chip}">${esc(title)}</span><b>${list.length}</b>${note ? `<span class="small muted">${note}</span>` : ''}</div>
+    ${list.length ? sub('todo', 'Not made into a ticket yet', todo, todo.length ? 'Click "Make a ticket" on each one.' : '') + sub('done', 'Ticket made', done, '') : `<div class="empty small">${empty}</div>`}</div>`;
+}
 function v4() {
   const P = problems(), pend = pendingTriage();
   const card = p => { const key = S.ptk[p.pid], dr = S.drafting[p.pid];
@@ -1156,24 +1165,24 @@ function v4() {
       : S.open === p.pid ? '' : `<div class="row"><button class="btn primary" data-a="makeTicket" data-p="${esc(p.pid)}">${dr && dr.status === 'error' ? 'Try again' : 'Make a ticket'}</button>${dr && dr.status === 'error' ? `<span class="small q">${esc(dr.err)}</span><button class="btn sm" data-a="basicDraft" data-p="${esc(p.pid)}">Use a basic draft</button>` : `<span class="small muted">${aiReady() ? 'The AI drafts it. You check and create.' : 'AI is off: a basic draft is used.'}</span>`}</div>`}
     ${chatHTML(p, 'manager')}</div>
     ${S.open === p.pid && !key && S.drafts[p.pid] ? ticketForm(p) : ''}</div>`; };
-  return `<section class="panel"><div class="phead"><div><span class="eyebrow">Section 4 · ticket drafter</span><h2>Unique problems</h2><p class="muted">Approved problems from Bugs and comments. Open a chat with the testers who reported a problem to ask for more detail. "Make a ticket" asks the AI ticket drafter to write the ticket from every linked comment, the testers' answers and the chat. You check every field. A clarity check stops vague tickets.</p></div></div>
-  ${pend ? `<div class="note">${pend} item${pend > 1 ? 's' : ''} in Section 3 still need${pend > 1 ? '' : 's'} a decision, so ${pend > 1 ? 'they are' : 'it is'} not shown here yet. <button class="btn link small" data-a="sec" data-v="3">Go to Section 3</button></div>` : ''}
-  <div class="stack"><div class="row between"><span class="eyebrow">Unique problems · ${P.bugs.length}</span><span class="small muted">${P.bugs.filter(p => S.ptk[p.pid]).length} with a ticket</span></div>${P.bugs.map(card).join('') || '<div class="empty small">No unique problems yet.</div>'}</div>
-  <div class="stack"><div class="row between"><span class="eyebrow">Good ideas · ${P.ideas.length}</span><span class="small muted">Not bugs. Make a ticket only if you want to plan it.</span></div>${P.ideas.map(card).join('') || '<div class="empty small">No good ideas added yet. Add them in Section 3.</div>'}</div></section>`;
+  return `<section class="panel"><div class="phead"><div><span class="eyebrow">Section 4</span><h2>Ticket Drafter</h2><p class="muted">Approved unique problems and good ideas from Bugs and comments. Open a chat with the testers who reported a problem to ask for more detail. "Make a ticket" asks the AI ticket drafter to write the ticket from every linked comment, the testers' answers and the chat. You check every field. A clarity check stops vague tickets.</p></div></div>
+  ${pend ? `<div class="note">${pend} item${pend > 1 ? 's' : ''} in Bugs and comments still need${pend > 1 ? '' : 's'} a decision, so ${pend > 1 ? 'they are' : 'it is'} not shown here yet. <button class="btn link small" data-a="sec" data-v="3">Go to Bugs and comments</button></div>` : ''}
+  ${tdGroup('bugs', 'Unique problems', 'c-bug', P.bugs, card, 'No unique problems yet. Approve comments in Bugs and comments.', '')}
+  ${tdGroup('ideas', 'Good ideas', 'c-idea', P.ideas, card, 'No good ideas added yet. Add them in Bugs and comments.', 'Not bugs. Make a ticket only if you want to plan it.')}</section>`;
 }
 function v5() {
   const rows = S.tickets.map(t => { const open = S.openTicket === t.key;
     return `<tr class="${t.src === 'UAT' ? 'new' : ''}"><td>${t.d ? `<button class="btn link mono" data-a="tOpen" data-v="${esc(t.key)}">${esc(t.key)}</button>` : `<span class="mono">${esc(t.key)}</span>`}</td><td>${esc(t.summary)}${t.d && t.d.gaps && t.d.gaps.length ? `<div class="small q">Created with gaps: ${esc(t.d.gaps.join('; '))}</div>` : ''}${t.links ? `<div class="small muted">+${t.links} UAT report${t.links > 1 ? 's' : ''} linked</div>` : ''}</td><td>${esc(t.type)}</td><td>${esc(t.priority)}</td><td>${esc(t.epic)}</td><td><select aria-label="Status of ${esc(t.key)}" id="st-${esc(t.key)}" data-a="tStatus" data-v="${esc(t.key)}">${['To do', 'In progress', 'Done'].map(s => `<option ${s === t.status ? 'selected' : ''}>${s}</option>`).join('')}</select></td><td>${t.reopened ? '<span class="chip c-bug">Reopened</span>' : `<span class="small muted">${(t.ev || []).length + (t.links || 0)} report${(t.ev || []).length + (t.links || 0) !== 1 ? 's' : ''}</span>`}</td></tr>
     ${open && t.d ? `<tr class="tdetail"><td colspan="7"><div class="form"><div class="stack wide"><b>Description</b><span>${esc(t.d.description)}</span></div>${t.d.kind === 'idea' ? `<div class="stack wide"><b>Where to see it</b><span style="white-space:pre-line">${esc(t.d.steps)}</span></div><div class="stack"><b>Current behaviour</b><span>${esc(t.d.actual)}</span></div><div class="stack"><b>Suggested change</b><span>${esc(t.d.expected)}</span></div>` : `<div class="stack wide"><b>Steps to reproduce</b><span style="white-space:pre-line">${esc(t.d.steps)}</span></div><div class="stack"><b>Expected</b><span>${esc(t.d.expected)}</span></div><div class="stack"><b>Actual</b><span>${esc(t.d.actual)}</span></div>`}<div class="stack"><b>Environment</b><span>${esc(t.d.env)}</span></div><div class="stack"><b>Priority reason</b><span>${esc(t.d.why)}</span></div><div class="stack wide"><b>Evidence</b>${(t.ev || []).map(m => `<span>${esc(m.tester)}: <span class="quote">"${esc(m.text)}"</span></span>`).join('')}</div></div></td></tr>` : ''}`; }).join('');
-  return `<section class="panel"><div class="phead"><div><span class="eyebrow">Section 5</span><h2>Existing tickets</h2><p class="muted">Every ticket made from Unique problems in this test cycle. Bugs and comments checks new comments against this list, so the same problem never gets two tickets. Change a status and the testers who reported it are told.</p></div></div>
+  return `<section class="panel"><div class="phead"><div><span class="eyebrow">Section 5</span><h2>Existing tickets</h2><p class="muted">Every ticket made in the Ticket Drafter in this test cycle. Bugs and comments checks new comments against this list, so the same problem never gets two tickets. Change a status and the testers who reported it are told.</p></div></div>
   ${endCycleHTML()}
-  ${S.tickets.length ? `<div class="tablewrap"><table><thead><tr><th>Key</th><th>Summary</th><th>Type</th><th>Priority</th><th>Epic</th><th>Status</th><th>Reports</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty"><b>No tickets yet</b><span>Tickets you create in Unique problems appear here.</span></div>'}</section>`;
+  ${S.tickets.length ? `<div class="tablewrap"><table><thead><tr><th>Key</th><th>Summary</th><th>Type</th><th>Priority</th><th>Epic</th><th>Status</th><th>Reports</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty"><b>No tickets yet</b><span>Tickets you create in the Ticket Drafter appear here.</span></div>'}</section>`;
 }
 function vInbox() {
   return `<section class="panel"><div class="phead"><div><span class="eyebrow">My updates</span><h2>Notifications</h2><p class="muted">You are told when a tester answers your question, completes their test, or sends new feedback. Click one to open it.</p></div>${unread('manager') ? '<button class="btn sm" data-a="readAll" data-v="manager">Mark all as read</button>' : ''}</div>
   <div class="stack">${noteList('manager')}</div></section>`;
 }
-const SECS = [[1, 'Test script', 'Steps and testers', I.list], [2, 'Testing progress', 'Results and questions', I.play], [3, 'Bugs and comments', 'Duplicates, known, ideas', I.layers], [4, 'Unique problems', 'Make a ticket', I.ticket], [5, 'Existing tickets', 'All tickets', I.board]];
+const SECS = [[1, 'Test script', 'Steps and testers', I.list], [2, 'Testing progress', 'Results and questions', I.play], [3, 'Bugs and comments', 'Duplicates, known, ideas', I.layers], [4, 'Ticket Drafter', 'Make a ticket', I.ticket], [5, 'Existing tickets', 'All tickets', I.board]];
 const GROUPS = [['Before testing', [1]], ['During testing', [2]], ['After testing', [3, 4]], ['Handover', [5]]];
 function managerUI() {
   const P = problems(), um = unread('manager');
@@ -1345,15 +1354,16 @@ const A = {
     if (k.startsWith('g:')) { const g = triage().groups.find(x => x.anchor === k.slice(2)); if (!g) return; const ins = g.members.filter(c => S.mem[c.id] === 'in');
       if (!v) { delete S.appr[k]; const quiet = ins.map(c => revoke(c.id)).every(Boolean); toast(quiet ? 'Undone. No message was sent.' : 'Decision reopened. A correction is sent when you decide again.'); return; }
       S.appr[k] = v; ins.forEach(c => tell(c.id, v === 'yes' ? withCredit(MSG.mergedApproved(c, ins.length), c, ins) : MSG.notApproved(c)));
-      toast((v === 'yes' ? 'Merged comment approved and moved to Unique problems. ' : 'Merged comment not approved. ') + 'Messages send in 10 s'); return; }
+      toast((v === 'yes' ? 'Merged comment approved and moved to the Ticket Drafter. ' : 'Merged comment not approved. ') + 'Messages send in 10 s'); return; }
     const c = comments().find(x => x.id === k); if (!c) return;
     if (!v) { delete S.appr[k]; toast(revoke(k) ? 'Undone. No message was sent.' : 'Decision reopened. A correction is sent when you decide again.'); return; }
     S.appr[k] = v; tell(k, v === 'yes' ? withCredit(MSG.approved(c, c.thin), c) : MSG.notApproved(c));
-    toast((v === 'yes' ? 'Approved and moved to Unique problems. ' : 'Not approved. ') + 'Message to ' + c.tester + ' sends in 10 s'); },
+    toast((v === 'yes' ? 'Approved and moved to the Ticket Drafter. ' : 'Not approved. ') + 'Message to ' + c.tester + ' sends in 10 s'); },
   askFirst: () => { const q = S.confirm; S.confirm = null; if (!q) return; S.panel = { t: 'thread', k: q.ids[0] }; S.focusInput = 'pn-input'; },
   cancelConfirm: () => { S.confirm = null; },
   f3: e => { S.f3 = S.f3 === e.dataset.v && e.dataset.v !== 'all' ? 'all' : e.dataset.v; },
   f3b: e => { S.f3b = e.dataset.v; },
+  tdTog: e => { S.tdOpen = Object.assign({}, S.tdOpen, { [e.dataset.v]: !(S.tdOpen && S.tdOpen[e.dataset.v] === false) ? false : true }); },
   f3reset: () => { S.f3b = 'all'; S.f3 = 'all'; },
   tog3: e => { const v = e.dataset.v; if (S.hide3[v]) delete S.hide3[v]; else S.hide3[v] = true; },
   togAll: e => { if (e.dataset.v === 'show') S.hide3 = {}; else [...new Set([...S.script.map(x => x.scen), ...triage().cs.map(c => step(c.step).scen)])].forEach(v => { S.hide3[v] = true; }); },
@@ -1399,7 +1409,7 @@ function chatPost(pid, from, text, img) {
   toast(from === 'manager' ? 'Sent to ' + people.join(', ') : 'Sent to the chat');
 }
 // What can still be clicked in a completed test cycle: looking around, not changing anything.
-const VIEW_OK = new Set(['role', 'login', 'logout', 'homeNote', 'homeReadAll', 'togG', 'togUpd', 'togInbox', 'togMChats', 'aiDupRetry', 'ttab', 'sec', 'mtester', 'openStep', 'openPanel', 'closePanel', 'zoom', 'unzoom', 'tOpen', 'seeTicket', 'openNote', 'readAll', 'reopenCycle', 'goHome', 'openCycle', 'hideGuide', 'showGuide', 'f3', 'f3b', 'f3reset', 'tog3', 'togAll', 'askReset', 'cancelReset', 'doReset', 'htab', 'cancelEnd', 'closeForm', 'retryBoot']);
+const VIEW_OK = new Set(['role', 'login', 'logout', 'homeNote', 'homeReadAll', 'togG', 'togUpd', 'togInbox', 'togMChats', 'aiDupRetry', 'ttab', 'sec', 'mtester', 'openStep', 'openPanel', 'closePanel', 'zoom', 'unzoom', 'tOpen', 'seeTicket', 'openNote', 'readAll', 'reopenCycle', 'goHome', 'openCycle', 'hideGuide', 'showGuide', 'f3', 'f3b', 'f3reset', 'tdTog', 'tog3', 'togAll', 'askReset', 'cancelReset', 'doReset', 'htab', 'cancelEnd', 'closeForm', 'retryBoot']);
 const readOnlyNote = () => toast('This test cycle is completed. Click "Reopen test cycle" to change it.');
 document.addEventListener('click', async ev => {
   const el = ev.target.closest('[data-a]'); if (!el || ['SELECT', 'TEXTAREA', 'INPUT'].includes(el.tagName)) return;

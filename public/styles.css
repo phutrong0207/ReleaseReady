@@ -471,3 +471,11 @@ input[type=number]{font:inherit;font-size:14.5px;color:var(--ink);background:var
 .subchip b{font-weight:700;margin-left:2px}
 .subchip:hover{border-color:var(--accent)}
 .subchip[aria-pressed="true"]{background:var(--ink);color:var(--bg,#fff);border-color:var(--ink)}
+
+/* Ticket Drafter: each list split into "not made into a ticket yet" and "ticket made" */
+.tdgroup{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;background:var(--surface)}
+.tdtitle{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:17px}
+.tdtitle .chip{font-size:14px;padding:4px 12px}
+.tdsub{display:flex;flex-direction:column;gap:10px;padding-left:12px;border-left:3px solid var(--line)}
+.tdsubhead{appearance:none;background:none;border:0;padding:4px 0;font:inherit;font-weight:600;font-size:14px;color:var(--ink);display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left;flex-wrap:wrap}
+.tdcount{font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--sunk)}
