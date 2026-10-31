@@ -4,8 +4,6 @@
 
 ReleaseReady follows a bug all the way through user acceptance testing (UAT): from the test script, to a tester's comment, to duplicate checks, to a clear ticket, to the fix, and back to the tester with a message saying what happened.
 
-> Demo video: _add your link here_
-
 ---
 
 ## What it does
@@ -148,10 +146,9 @@ supabase/schema.sql  Database tables
 
 ## Limits of this prototype
 - **No logins.** Anyone who can open the app can act as any tester or as the manager. The database rules allow full access for the app's key. A real version would add company login, roles, and stricter database rules.
-- **Duplicate matching uses word overlap**, not meaning. A real version could use text embeddings while keeping the visible score breakdown.
 - **Screenshots** are resized and stored in the database. A real version would use file storage.
 - **Free Gemini limits** are small, and the free tier is sometimes overloaded (error 503). The server retries and falls back to Flash-Lite; if it still fails, use "Use basic check" / "Use a basic draft" or wait a minute. The Render logs show how long each AI call took.
 
 ---
 
-AI: Google Gemini. Database: Supabase. Built for the "UAT, Untangled" challenge.
+AI: Google Gemini. Database: Supabase.
