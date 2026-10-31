@@ -479,6 +479,22 @@ function triage() {
     groups.forEach(g => g.members.forEach(m => { const p = pair(c, m); if (p.score >= 40 && p.sim >= 0.2 && (!best || p.score > best.p.score)) best = { g, p }; }));
     if (best && S.groups[best.g.anchor] !== false) best.g.members.push(c); else leftovers.push(c);
   });
+  // One rule: a new comment that matches a problem which ALREADY HAS A TICKET is "Already known", not a duplicate.
+  // Duplicates are only matches between comments that do not have a ticket yet.
+  for (let gi = groups.length - 1; gi >= 0; gi--) { const g = groups[gi];
+    const key = S.ptk['g:' + g.anchor] || g.members.map(m => S.ptk['c:' + m.id]).find(Boolean), t = key && S.tickets.find(x => x.key === key); if (!t) continue;
+    const isNew = c => !S.mem[c.id] && !S.appr[c.id] && !S.known[c.id] && !(t.ev || []).some(e => e.id === c.id);
+    const fresh = g.members.filter(isNew); if (!fresh.length) continue;
+    fresh.forEach(c => { const others = g.members.filter(m => !fresh.includes(m));
+      const ai = aiPairs().filter(p => (p.a === c.id || p.b === c.id) && others.some(o => o.id === p.a || o.id === p.b)).sort((x, y) => y.conf - x.conf)[0];
+      const rule = others.map(o => pair(c, o)).sort((x, y) => y.score - x.score)[0] || { score: 0 };
+      const open = t.status !== 'Done' || t.reopened;
+      c.cl = { type: 'known', jira: t.key, conf: Math.min(95, ai ? ai.conf : rule.score), closed: !open, ai: ai && ai.reason,
+        why: [[ai ? `AI read the meaning: ${ai.reason}` : `Same step, screen or wording as the comments in ${t.key} (rule estimate)`, true], [`It matches the comments that ${t.key} was made from`, true], [open ? `${t.key} is still open (${t.reopened ? 'reopened' : t.status})` : `${t.key} is Done, so this may be the same problem coming back (a regression)`, open ? true : null]] };
+      known.push(c); });
+    g.members = g.members.filter(m => !fresh.includes(m));
+    if (g.members.length < 2 && S.groups[g.anchor] !== true) { groups.splice(gi, 1); g.members.forEach(m => leftovers.push(m)); }
+  }
   groups.forEach(g => { g.members.sort((a, b) => a.seq - b.seq); g.members.forEach(c => c.cl = { type: 'dup', g: g.anchor }); });
   const bugs = [];
   leftovers.forEach(c => { const m = ruled(c) && knownMatch(c), ak = !m && aiKnown(c); if (m) { c.cl = knownInfo(c, m.t.key, m); known.push(c); } else if (ak) { c.cl = ak; known.push(c); } else { c.cl = { type: 'bug' }; bugs.push(c); } });
