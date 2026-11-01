@@ -479,3 +479,14 @@ input[type=number]{font:inherit;font-size:14.5px;color:var(--ink);background:var
 .tdsub{display:flex;flex-direction:column;gap:10px;padding-left:12px;border-left:3px solid var(--line)}
 .tdsubhead{appearance:none;background:none;border:0;padding:4px 0;font:inherit;font-weight:600;font-size:14px;color:var(--ink);display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left;flex-wrap:wrap}
 .tdcount{font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--sunk)}
+/* Impact summary + Jira bar (Existing tickets) */
+.impact{border:1px solid var(--line);background:var(--sunk);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.ihead{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;justify-content:space-between}
+.iline{font-weight:600;font-size:15px}
+.itiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.itile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;display:flex;flex-direction:column;gap:2px;border-left:3px solid var(--accent)}
+.itile b{font-size:22px;line-height:1.1}
+.itile span{font-size:12px;color:var(--muted)}
+.itile.dup{border-left-color:var(--warn)} .itile.kn{border-left-color:var(--known)} .itile.id{border-left-color:var(--idea)} .itile.wt{border-left-color:var(--bad)}
+.jirabar{align-items:center;gap:8px;flex-wrap:wrap}
+.tgroup{display:flex;flex-direction:column;gap:8px;margin-top:6px} .tgroup .tdtitle{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}

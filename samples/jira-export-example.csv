@@ -1,0 +1,4 @@
+Summary,Issue key,Issue id,Issue Type,Status,Priority,Description,Component/s,Labels
+"Dashboard spending chart is empty, only the heading shows",EXP-41,10041,Bug,In Progress,High,"The spending chart on the Dashboard shows its heading but no bars or total for the month. Seen in the last sprint review.",Reports,charts
+"Receipt photo upload fails for images over 5 MB",EXP-38,10038,Bug,To Do,Medium,"Attaching a large phone photo as a receipt shows ""Upload failed"". Smaller images work.",Expenses,receipts
+"Login page logo looks blurry on high-resolution screens",EXP-35,10035,Bug,Done,Low,"The logo image is low resolution and looks blurry on retina displays.",Login,ui

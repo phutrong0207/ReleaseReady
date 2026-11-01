@@ -1187,12 +1187,17 @@ function v4() {
   ${tdGroup('ideas', 'Good ideas', 'c-idea', P.ideas, card, 'No good ideas added yet. Add them in Bugs and comments.', 'Not bugs. Make a ticket only if you want to plan it.')}</section>`;
 }
 function v5() {
-  const rows = S.tickets.map(t => { const open = S.openTicket === t.key;
+  const rowsOf = list => list.map(t => { const open = S.openTicket === t.key;
     return `<tr class="${t.src === 'UAT' ? 'new' : ''}"><td>${t.d ? `<button class="btn link mono" data-a="tOpen" data-v="${esc(t.key)}">${esc(t.key)}</button>` : `<span class="mono">${esc(t.key)}</span>`}</td><td>${esc(t.summary)}${t.d && t.d.gaps && t.d.gaps.length ? `<div class="small q">Created with gaps: ${esc(t.d.gaps.join('; '))}</div>` : ''}${t.links ? `<div class="small muted">+${t.links} UAT report${t.links > 1 ? 's' : ''} linked</div>` : ''}</td><td>${esc(t.type)}</td><td>${esc(t.priority)}</td><td>${esc(t.epic)}</td><td><select aria-label="Status of ${esc(t.key)}" id="st-${esc(t.key)}" data-a="tStatus" data-v="${esc(t.key)}">${['To do', 'In progress', 'Done'].map(s => `<option ${s === t.status ? 'selected' : ''}>${s}</option>`).join('')}</select></td><td>${t.reopened ? '<span class="chip c-bug">Reopened</span>' : `<span class="small muted">${(t.ev || []).length + (t.links || 0)} report${(t.ev || []).length + (t.links || 0) !== 1 ? 's' : ''}</span>`}</td></tr>
-    ${open && t.d ? `<tr class="tdetail"><td colspan="7"><div class="form"><div class="stack wide"><b>Description</b><span>${esc(t.d.description)}</span></div>${t.d.kind === 'idea' ? `<div class="stack wide"><b>Where to see it</b><span style="white-space:pre-line">${esc(t.d.steps)}</span></div><div class="stack"><b>Current behaviour</b><span>${esc(t.d.actual)}</span></div><div class="stack"><b>Suggested change</b><span>${esc(t.d.expected)}</span></div>` : `<div class="stack wide"><b>Steps to reproduce</b><span style="white-space:pre-line">${esc(t.d.steps)}</span></div><div class="stack"><b>Expected</b><span>${esc(t.d.expected)}</span></div><div class="stack"><b>Actual</b><span>${esc(t.d.actual)}</span></div>`}<div class="stack"><b>Environment</b><span>${esc(t.d.env)}</span></div><div class="stack"><b>Priority reason</b><span>${esc(t.d.why)}</span></div><div class="stack wide"><b>Evidence</b>${(t.ev || []).map(m => `<span>${esc(m.tester)}: <span class="quote">"${esc(m.text)}"</span></span>`).join('')}</div></div></td></tr>` : ''}`; }).join('');
-  return `<section class="panel"><div class="phead"><div><span class="eyebrow">Section 5</span><h2>Existing tickets</h2><p class="muted">Every ticket made in the Ticket Drafter in this test cycle. Bugs and comments checks new comments against this list, so the same problem never gets two tickets. Change a status and the testers who reported it are told.</p></div></div>
+    ${open && t.d && t.d.imported ? `<tr class="tdetail"><td colspan="7"><div class="form"><div class="stack wide"><b>Description (from Jira)</b><span style="white-space:pre-line">${esc(t.d.description || 'No description in the Jira export.')}</span></div>${(t.ev || []).length ? `<div class="stack wide"><b>UAT evidence</b>${t.ev.map(m => `<span>${esc(m.tester)}: <span class="quote">"${esc(m.text)}"</span></span>`).join('')}</div>` : ''}</div></td></tr>` : open && t.d ? `<tr class="tdetail"><td colspan="7"><div class="form"><div class="stack wide"><b>Description</b><span>${esc(t.d.description)}</span></div>${t.d.kind === 'idea' ? `<div class="stack wide"><b>Where to see it</b><span style="white-space:pre-line">${esc(t.d.steps)}</span></div><div class="stack"><b>Current behaviour</b><span>${esc(t.d.actual)}</span></div><div class="stack"><b>Suggested change</b><span>${esc(t.d.expected)}</span></div>` : `<div class="stack wide"><b>Steps to reproduce</b><span style="white-space:pre-line">${esc(t.d.steps)}</span></div><div class="stack"><b>Expected</b><span>${esc(t.d.expected)}</span></div><div class="stack"><b>Actual</b><span>${esc(t.d.actual)}</span></div>`}<div class="stack"><b>Environment</b><span>${esc(t.d.env)}</span></div><div class="stack"><b>Priority reason</b><span>${esc(t.d.why)}</span></div><div class="stack wide"><b>Evidence</b>${(t.ev || []).map(m => `<span>${esc(m.tester)}: <span class="quote">"${esc(m.text)}"</span></span>`).join('')}</div></div></td></tr>` : ''}`; }).join('');
+  const mine = S.tickets.filter(t => t.src !== 'Jira'), ext = S.tickets.filter(t => t.src === 'Jira'), head = '<thead><tr><th>Key</th><th>Summary</th><th>Type</th><th>Priority</th><th>Epic</th><th>Status</th><th>Reports</th></tr></thead>';
+  const tgroup = (title, sub, list, empty) => `<div class="tgroup"><div class="tdtitle"><h3>${title}</h3><span class="tdcount mono">${list.length}</span><span class="small muted">${sub}</span></div>${list.length ? `<div class="tablewrap"><table>${head}<tbody>${rowsOf(list)}</tbody></table></div>` : `<div class="empty small">${empty}</div>`}</div>`;
+  return `<section class="panel"><div class="phead"><div><span class="eyebrow">Section 5</span><h2>Existing tickets</h2><p class="muted">Every ticket made in the Ticket Drafter in this test cycle, plus any tickets imported from Jira. Bugs and comments checks new comments against this list, so the same problem never gets two tickets. Change a status and the testers who reported it are told.</p></div></div>
   ${endCycleHTML()}
-  ${S.tickets.length ? `<div class="tablewrap"><table><thead><tr><th>Key</th><th>Summary</th><th>Type</th><th>Priority</th><th>Epic</th><th>Status</th><th>Reports</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty"><b>No tickets yet</b><span>Tickets you create in the Ticket Drafter appear here.</span></div>'}</section>`;
+  ${impactHTML()}
+  <div class="row jirabar"><button class="btn sm" data-a="jiraExport" ${mine.length ? '' : 'disabled'}>Export ${mine.length} ticket${mine.length !== 1 ? 's' : ''} made here to Jira (CSV)</button><label class="btn sm filebtn">Import from Jira (CSV)<input type="file" accept=".csv,text/csv" data-a="jiraFile" aria-label="Import tickets from a Jira CSV export"></label><span class="small muted">Export sends only tickets made in ReleaseReady, because imported tickets are already in Jira. In Jira, choose Import issues from CSV.</span></div>
+  ${tgroup('Made in ReleaseReady', 'From this test cycle. These are exported to Jira.', mine, 'No tickets made yet. Tickets you create in the Ticket Drafter appear here.')}
+  ${tgroup('Imported from Jira', 'Already in Jira. New comments are checked against them, but they are not exported again.', ext, 'None yet. Use Import from Jira (CSV) to bring in your team\'s existing tickets.')}</section>`;
 }
 function vInbox() {
   return `<section class="panel"><div class="phead"><div><span class="eyebrow">My updates</span><h2>Notifications</h2><p class="muted">You are told when a tester answers your question, completes their test, or sends new feedback. Click one to open it.</p></div>${unread('manager') ? '<button class="btn sm" data-a="readAll" data-v="manager">Mark all as read</button>' : ''}</div>
@@ -1239,6 +1244,70 @@ function render() {
   schedulePersist();
 }
 
+
+/* ===================== JIRA CSV + IMPACT ===================== */
+function csvParse(text) {
+  const rows = []; let row = [], f = '', q = false; text = String(text).replace(/^﻿/, '');
+  for (let i = 0; i < text.length; i++) { const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += ch; }
+    else if (ch === '"') q = true; else if (ch === ',') { row.push(f); f = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
+    else f += ch; }
+  if (f !== '' || row.length) { row.push(f); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim() !== ''));
+}
+const csvCell = v => { v = v == null ? '' : String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+function jiraCSV() {
+  const list = S.tickets.filter(t => t.src !== 'Jira');
+  const labs = list.map(t => { const d = t.d || {}; return [...new Set(['uat', 'releaseready', ...(d.kind === 'idea' || t.type === 'Improvement' ? ['improvement'] : []), ...String(d.labels || '').split(/[,;]/).map(x => x.trim().toLowerCase().replace(/\s+/g, '-')).filter(Boolean)])]; });
+  const nl = Math.max(1, ...labs.map(l => l.length));
+  const head = ['Summary', 'Issue Type', 'Priority', 'Status', 'Component', 'Description', ...Array(nl).fill('Labels'), 'UAT key'];
+  const rows = list.map((t, i) => { const d = t.d || {}, idea = d.kind === 'idea' || t.type === 'Improvement', ev = t.ev || [];
+    const desc = [d.description || t.summary, '', idea ? '*Where to see it*' : '*Steps to reproduce*', d.steps || '-', '', idea ? '*Current behaviour*' : '*Expected result*', (idea ? d.actual : d.expected) || '-', '', idea ? '*Suggested change*' : '*Actual result*', (idea ? d.expected : d.actual) || '-', '', '*Environment*', d.env || '-', '', '*Priority reason*', d.why || '-', '',
+      `*Tester evidence (${ev.length + (t.links || 0)} UAT report${ev.length + (t.links || 0) !== 1 ? 's' : ''})*`, ...ev.map(m => `- ${m.tester}: "${m.text}"`), ...(t.links ? [`- plus ${t.links} more linked later in ReleaseReady`] : []), '', `Made in ReleaseReady from UAT cycle "${(curCycle() || {}).name || ''}" as ${t.key}.`].join('\n');
+    const l = labs[i]; return [t.summary, idea ? 'Story' : 'Bug', t.priority || 'Medium', t.status || 'To do', t.epic || '', desc, ...Array.from({ length: nl }, (_, j) => l[j] || ''), t.key]; });
+  return { n: list.length, text: [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n') };
+}
+async function offerFile(name, text) {
+  try { const dl = window.claude && window.claude.use ? await window.claude.use('downloads').catch(() => null) : null;
+    if (dl) { try { await dl.save({ filename: name, data: text }); return 'saved'; } catch (e) { return e && e.code === 'declined' ? 'declined' : 'failed'; } } } catch (e) { /* fall through */ }
+  try { const u = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' })), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); return 'saved'; } catch (e) { return 'failed'; }
+}
+function jiraImport(text) {
+  const rows = csvParse(text); if (rows.length < 2) return { err: 'That file has no tickets in it.' };
+  const head = rows[0].map(h => h.trim().toLowerCase()), col = names => { for (const n of names) { const i = head.indexOf(n); if (i >= 0) return i; } return -1; };
+  const all = names => head.map((h, i) => names.includes(h) ? i : -1).filter(i => i >= 0);
+  const cS = col(['summary']), cK = col(['issue key', 'key']), cT = col(['issue type', 'issuetype', 'type']), cSt = col(['status']), cP = col(['priority']), cD = col(['description']);
+  const cE = all(['component/s', 'components', 'component', 'epic link', 'parent summary', 'custom field (epic link)', 'epic name', 'custom field (epic name)']);
+  if (cS < 0) return { err: 'No "Summary" column found. In Jira, export the issues as CSV and try again.' };
+  const scen = [...new Set(S.script.map(x => x.scen))];
+  const mapSt = v => /done|closed|resolved|complete/i.test(v) ? 'Done' : /progress|review|testing|develop/i.test(v) ? 'In progress' : 'To do';
+  const mapP = v => /highest|high|critical|blocker|urgent/i.test(v) ? 'High' : /lowest|low|trivial|minor/i.test(v) ? 'Low' : 'Medium';
+  let added = 0, updated = 0, n = 0;
+  rows.slice(1).forEach(r => { const g = i => i >= 0 ? (r[i] || '').trim() : ''; const summary = g(cS); if (!summary) return;
+    let key = g(cK).toUpperCase(); if (!key) { do { key = 'JIRA-' + (++n); } while (S.tickets.some(t => t.key === key)); }
+    const raw = cE.map(i => (r[i] || '').trim()).filter(Boolean), epic = scen.find(sc => raw.some(e => e.toLowerCase() === sc.toLowerCase())) || raw[0] || '';
+    const desc = g(cD).replace(/\{[a-z]+[^}]*\}|h\d\.\s*|\*/gi, '').trim(), type = /bug|defect/i.test(g(cT)) || !g(cT) ? 'Bug' : 'Improvement';
+    const t = { key, summary, type, priority: mapP(g(cP)), epic, status: mapSt(g(cSt)), src: 'Jira', d: { imported: true, description: desc, actual: desc.slice(0, 600) } };
+    const old = S.tickets.find(x => x.key === key);
+    if (old) { if (old.src !== 'Jira') return; Object.assign(old, t); updated++; }
+    else { S.tickets.push(Object.assign(t, { links: 0, ev: [], seq: 0 })); added++; } });
+  if (!added && !updated) return { err: 'No tickets were found in that file (each row needs a Summary).' };
+  return { added, updated };
+}
+function impactStats() {
+  const T = triage(), cs = comments(), uat = S.tickets.filter(t => t.src === 'UAT'), isIdea = t => (t.d && t.d.kind === 'idea') || t.type === 'Improvement';
+  const merged = uat.reduce((n, t) => n + Math.max(0, (t.ev || []).length - 1), 0), linked = cs.filter(c => S.known[c.id] === 'link').length;
+  return { comments: cs.length, testers: new Set(cs.map(c => c.tester)).size, bugs: uat.filter(t => !isIdea(t)).length, ideaT: uat.filter(isIdea).length,
+    ideas: T.ideas.length + cs.filter(c => c.cat === 'nonbug' && !T.ideas.includes(c)).length, merged, linked, avoided: merged + linked, waiting: pendingTriage(), jira: S.tickets.filter(t => t.src === 'Jira').length };
+}
+function impactHTML() {
+  const s = impactStats(); if (!s.comments) return '';
+  const tile = (n, l, cls) => `<div class="itile ${cls || ''}"><b class="mono">${n}</b><span>${l}</span></div>`;
+  return `<div class="impact" aria-label="Impact of this test cycle"><div class="ihead"><span class="eyebrow">Impact of this test cycle</span><span class="iline">${s.comments} tester comment${s.comments !== 1 ? 's' : ''} → ${s.bugs + s.ideaT} ticket${s.bugs + s.ideaT !== 1 ? 's' : ''}${s.avoided ? ` · ${s.avoided} duplicate ticket${s.avoided !== 1 ? 's' : ''} avoided` : ''}</span></div>
+  <div class="itiles">${tile(s.comments, `comments from ${s.testers} tester${s.testers !== 1 ? 's' : ''}`)}${tile(s.bugs, 'bug tickets made')}${tile(s.merged, 'duplicates merged into one ticket', 'dup')}${tile(s.linked, 'linked to known problems', 'kn')}${tile(s.ideas, 'ideas kept apart from bugs', 'id')}${tile(s.waiting, 'still need your decision', s.waiting ? 'wt' : '')}</div></div>`;
+}
+
 /* ===================== ACTIONS ===================== */
 const val = id => (document.getElementById(id) || {}).value || '';
 async function resizeImage(file, max = 1000, q = 0.72) {
@@ -1250,6 +1319,7 @@ async function resizeImage(file, max = 1000, q = 0.72) {
   return c.toDataURL('image/jpeg', q);
 }
 const A = {
+  jiraExport: async () => { const x = jiraCSV(); if (!x.n) { toast('No tickets to export yet.'); return; } const r = await offerFile(`releaseready-jira-${(appName() || 'uat').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.csv`, x.text); toast(r === 'saved' ? `${x.n} ticket${x.n !== 1 ? 's' : ''} exported for Jira` : r === 'declined' ? 'Export cancelled' : 'The file could not be saved here.'); return 'keep'; },
   role: e => { S.panel = null; const v = e.dataset.v; if (v === S.role) return; CY.openG = {};
     if (v === 'tester') { CY.me = null; S.role = 'tester'; S.me = null; goHome(); return 'keep'; }   // testers always start by saying who they are
     S.role = 'manager'; S.me = null; if (S.boot === 'home') { S.htab = null; loadNotes().then(render); } window.scrollTo({ top: 0 }); },
@@ -1447,7 +1517,7 @@ document.addEventListener('keydown', ev => {
 document.addEventListener('focusout', () => { if (S.renderLater) setTimeout(() => { if (!typing()) { S.renderLater = false; render(); } }, 50); });
 document.addEventListener('change', async ev => {
   const el = ev.target, a = el.dataset.a;
-  if (cycleDone() && ['tStatus', 'sel', 'shotFile', 'pimg', 'edit'].includes(a)) { readOnlyNote(); render(); return; }
+  if (cycleDone() && ['tStatus', 'sel', 'shotFile', 'pimg', 'edit', 'jiraFile'].includes(a)) { readOnlyNote(); render(); return; }
   if (a === 'sel') { S.sel[el.dataset.k] = el.checked; (S.selTouched = S.selTouched || {})[el.dataset.k] = true; render(); }
   if (a === 'suN') { const n = Math.max(1, Math.min(20, parseInt(el.value, 10) || 1)); S.setup.n = n; S.setup.names = Array.from({ length: n }, (_, i) => S.setup.names[i] || ''); render(); }
   if (a === 'pimg' && el.files && el.files[0]) { const k = el.dataset.k; try { S.panelImg[k] = await resizeImage(el.files[0], 900, 0.7); S.focusInput = 'pn-input'; } catch (e) { toast('That file could not be read as a picture.'); } render(); }
@@ -1460,6 +1530,7 @@ document.addEventListener('change', async ev => {
       cs.forEach(c => tell(c.id, el.value === 'Done' ? MSG.fixed(c, t.key) : MSG.progress(c, t.key), true));
       if (cs.length) toast(t.key + ' is ' + el.value.toLowerCase() + '. ' + [...new Set(cs.map(c => c.tester))].join(', ') + ' told'); }
     render(); }
+  if (a === 'jiraFile' && el.files && el.files[0]) { try { const r = jiraImport(await el.files[0].text()); if (r.err) toast(r.err); else { toast(`${r.added} Jira ticket${r.added !== 1 ? 's' : ''} imported${r.updated ? `, ${r.updated} updated` : ''}`); schedulePersist(); } } catch (e) { toast('That file could not be read.'); } el.value = ''; render(); }
   if (a === 'edit' && el.tagName === 'SELECT') { S.drafts[S.open][el.dataset.k] = el.value; renderCheck(); schedulePersist(); }
 });
 document.addEventListener('input', ev => {
